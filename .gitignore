@@ -1,1 +1,5 @@
 /.env
+venv/
+wechat_images/
+__pycache__/
+*.pyc
