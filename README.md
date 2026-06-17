@@ -36,10 +36,19 @@ news_intelligence/
 1. **Clone / copy** this folder to your machine.
 
 2. **Install dependencies:**
+# 创建虚拟环境
+python3 -m venv venv
 
-   ```bash
-   pip3 install openai
-   ```
+# 激活
+source venv/bin/activate
+
+# 安装依赖
+pip install openai
+pip install -r ../NEXUS-main/requirements.txt
+
+#变量loading
+source .env
+
 
 3. **Create your `.env` file** from the template:
 
@@ -142,3 +151,8 @@ export OPENAI_MODEL="anthropic/claude-opus-4.8-fast"
   ```
 - Large inboxes may take a few minutes. Progress is printed every 50 emails.
 - Qwen's chain-of-thought `<think>` blocks are automatically stripped from output.
+
+python3 output_to_images.py                        # auto-detect school
+python3 output_to_images.py --school USC           # force school
+python3 output_to_images.py --out my_folder        # custom output dir
+python3 output_to_images.py --input other.json     # different JSON file

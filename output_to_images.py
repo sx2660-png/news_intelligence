@@ -31,20 +31,29 @@ if not _NEXUS_PATH.exists():
 
 sys.path.insert(0, str(_NEXUS_PATH))
 
-# The NEXUS path contains Chinese characters and spaces. _font_file_uri() calls
-# Path.resolve() which follows symlinks back to the original path, causing the
-# file:// URI to be percent-encoded and Chromium fails to load the font.
-# Fix: copy the font to /tmp (plain ASCII path) and monkey-patch _font_file_uri.
+# The project path contains Chinese characters and spaces. Path.resolve() returns
+# a percent-encoded file:// URI that Chromium cannot load. Fix: cache the font
+# at a plain ASCII path (~/.nexus_fonts) and monkey-patch _font_file_uri so
+# the encoded path is never used.  ~/.nexus_fonts persists across reboots.
+import shutil as _shutil
 import news_bot.processing.image_generator as _ig
-_FONT_SRC = _ig.FONTS_DIR / "SourceHanSerifSC-VF.otf"
-_FONT_COPY = Path("/tmp/nexus_fonts/SourceHanSerifSC-VF.otf")
-if _FONT_SRC.exists() and not _FONT_COPY.exists():
-    _FONT_COPY.parent.mkdir(parents=True, exist_ok=True)
-    import shutil as _shutil
-    print("[i] Copying font to /tmp/nexus_fonts/ (one-time, ~53MB)...")
-    _shutil.copy2(str(_FONT_SRC.resolve()), str(_FONT_COPY))
-if _FONT_COPY.exists():
-    _ig._font_file_uri = lambda: _FONT_COPY.as_uri()
+
+# Prefer the font bundled with this project; fall back to NEXUS-main copy.
+_FONT_SRC = _THIS_DIR / "assets" / "fonts" / "SourceHanSerifSC-VF.otf"
+if not _FONT_SRC.exists():
+    _FONT_SRC = _ig.FONTS_DIR / "SourceHanSerifSC-VF.otf"
+
+_FONT_CACHE = Path.home() / ".nexus_fonts" / "SourceHanSerifSC-VF.otf"
+if _FONT_SRC.exists() and not _FONT_CACHE.exists():
+    _FONT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    print("[i] Caching font to ~/.nexus_fonts/ (~53MB, one-time only)...")
+    _shutil.copy2(str(_FONT_SRC.resolve()), str(_FONT_CACHE))
+if _FONT_CACHE.exists():
+    _ig._font_file_uri = lambda: _FONT_CACHE.as_uri()
+
+_font_status = f"✓ {_FONT_CACHE}" if _FONT_CACHE.exists() else "✗ 未找到（将使用系统宋体回退）"
+print(f"[字体] 中文: SourceHanSerifSC (思源宋体可变字体)  →  {_font_status}")
+print(f"[字体] 英文: SourceHanSerifSC 内置拉丁字形 (Source Han Serif Latin)")
 
 from news_bot.processing.image_generator import generate_image_from_article  # noqa: E402
 
