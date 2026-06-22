@@ -1,3 +1,7 @@
-# gmail_scraper.py uses only the Python standard library — no extra installs needed.
-# content_generator.py requires:
 openai>=1.0.0
+Flask>=3.0.0
+gunicorn>=21.2.0
+jinja2>=3.1.0
+markdown2>=2.4.0
+Pillow>=10.0.0
+playwright>=1.40.0

@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LIVE Weekly Studio</title>
+  <style>
+    :root{
+      --bg:#0b0b0c;
+      --side:#111113;
+      --card:#121214;
+      --card-2:#18181b;
+      --input:#171719;
+      --border:#27272b;
+      --border-2:#323238;
+      --text:#f4f4f5;
+      --sub:#a1a1aa;
+      --muted:#66666f;
+      --blue:#3b7cff;
+      --blue-2:#2766f0;
+      --purple:#57068c;
+      --ok:#22c55e;
+      --bad:#ef4444;
+      --radius:8px;
+      --mono:"SFMono-Regular","Menlo","Consolas",monospace;
+      --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+    button,select,input,textarea{font:inherit}
+    .app{display:grid;grid-template-columns:320px 1fr;min-height:100vh}
+    .sidebar{background:var(--side);border-right:1px solid #1e1e22;display:flex;flex-direction:column}
+    .brand{padding:28px 20px 22px;border-bottom:1px solid #1f1f23}
+    .brand-title{font-size:19px;font-weight:800;letter-spacing:.1px}
+    .brand-title span{font-size:13px;color:var(--muted);font-weight:500;margin-left:8px}
+    .user{margin-top:20px;background:linear-gradient(180deg,#18181b,#141416);border:1px solid var(--border);border-radius:4px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
+    .user-left{display:flex;align-items:center;gap:10px;min-width:0}
+    .avatar{width:34px;height:34px;border-radius:7px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:grid;place-items:center;font-weight:800}
+    .user-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .role{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px}
+    .ghost{height:30px;border:1px solid var(--border);background:#0d0d0f;color:var(--sub);border-radius:5px;padding:0 10px;cursor:pointer}
+    .guide{margin-top:12px;height:32px;display:inline-flex;align-items:center;border:1px solid var(--border);background:#151518;color:var(--sub);border-radius:5px;padding:0 12px;font-size:12px}
+    .task-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 10px}
+    .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
+    .tabs{display:flex;gap:4px}
+    .tab{font-family:var(--mono);font-size:10px;height:23px;border:1px solid var(--border);background:#151518;color:var(--muted);border-radius:4px;padding:0 8px}
+    .tab.active{background:var(--blue);border-color:var(--blue);color:white}
+    .email-list{padding:0 14px 18px;overflow:auto;flex:1}
+    .email{width:100%;border:1px solid transparent;background:transparent;color:var(--sub);text-align:left;border-radius:6px;padding:10px 8px;cursor:pointer}
+    .email:hover,.email.active{background:#171719;border-color:var(--border)}
+    .email-date{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px}
+    .email-subject{font-size:12px;line-height:1.35;color:#d7d7dc;font-weight:650}
+    .email-sender{font-size:11px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .empty-side{color:var(--muted);line-height:1.6;text-align:center;padding:44px 26px;font-size:13px}
+    .main{padding:36px 40px 46px;overflow:auto}
+    .hero{margin-bottom:32px}
+    .hero h1{margin:0;font-size:26px;letter-spacing:0;font-weight:800}
+    .hero p{margin:12px 0 0;color:var(--sub)}
+    .cards{display:grid;grid-template-columns:repeat(3,minmax(270px,1fr));gap:24px;align-items:start}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);min-height:360px;overflow:hidden}
+    .card-head{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#141416,#111113)}
+    .card-title{font-size:15px;font-weight:800}
+    .badge{font-family:var(--mono);font-size:10px;color:var(--muted);background:#151518;border:1px solid #1e1e22;border-radius:4px;padding:4px 7px}
+    .card-body{padding:20px}
+    label{display:block;color:var(--sub);font-size:12px;margin:0 0 8px}
+    .field{width:100%;height:40px;background:var(--input);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:0 12px;outline:none}
+    textarea.field{height:150px;resize:vertical;padding:12px;line-height:1.55}
+    .steps{margin:16px 0 32px;background:#161618;border:1px solid #222226;border-radius:4px;padding:14px 14px;color:var(--sub);line-height:1.55;font-size:12px}
+    .steps-title{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+    .btn{width:100%;height:39px;border:1px solid var(--border);background:#171719;color:var(--text);border-radius:5px;cursor:pointer;font-weight:700}
+    .btn:hover{border-color:var(--border-2);background:#1d1d20}
+    .btn.primary{background:var(--blue);border-color:var(--blue);color:white}
+    .btn.primary:hover{background:var(--blue-2)}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .hint{color:var(--muted);font-size:11px;text-align:center;margin-top:13px}
+    .stack{display:grid;gap:14px}
+    .article-box{background:#151518;border:1px solid var(--border);border-radius:5px;padding:14px;min-height:210px}
+    .article-box h2{margin:0 0 12px;font-size:18px;line-height:1.35}
+    .article-box p{margin:0;color:#d6d6dc;line-height:1.7;white-space:pre-wrap}
+    .preview{background:#151518;border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
+    .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
+    .bottom{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
+    .log{background:#080809;border:1px solid var(--border);border-radius:var(--radius);min-height:160px;padding:16px;font-family:var(--mono);font-size:12px;color:var(--sub);white-space:pre-wrap;line-height:1.55}
+    .status-line{display:flex;gap:8px;flex-wrap:wrap}
+    .status-pill{border:1px solid var(--border);background:#151518;border-radius:5px;padding:8px 10px;color:var(--sub);font-family:var(--mono);font-size:11px}
+    .status-pill strong{color:var(--text)}
+    @media (max-width:1280px){.cards{grid-template-columns:1fr 1fr}.card.result{grid-column:1/-1}}
+    @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{min-height:420px}.main{padding:28px 18px}.cards,.bottom{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">LIVE Weekly <span>Studio</span></div>
+        <div class="user">
+          <div class="user-left">
+            <div class="avatar">N</div>
+            <div>
+              <div class="user-name">News Bot</div>
+              <div class="role">WORKER</div>
+            </div>
+          </div>
+          <button class="ghost" id="refreshBtn">Refresh</button>
+        </div>
+        <div class="guide">操作指南</div>
+      </div>
+      <div class="task-head">
+        <div class="eyebrow">Active Emails</div>
+        <div class="tabs">
+          <button class="tab active">All</button>
+          <button class="tab">Doc</button>
+          <button class="tab">Img</button>
+        </div>
+      </div>
+      <div class="email-list" id="emailList"></div>
+    </aside>
+
+    <main class="main">
+      <header class="hero">
+        <h1>News Production</h1>
+        <p>Generate Chinese news content and WeChat-ready images.</p>
+      </header>
+
+      <section class="cards">
+        <article class="card">
+          <div class="card-head">
+            <div class="card-title">Automated News Ingestion</div>
+            <div class="badge">Fetch</div>
+          </div>
+          <div class="card-body">
+            <label>Select School</label>
+            <select class="field" id="schoolSelect">
+              <option value="">Auto Detect</option>
+              <option value="NYU">New York University (NYU)</option>
+              <option value="USC">University of Southern California</option>
+              <option value="EMORY">Emory University</option>
+              <option value="UCD">UC Davis</option>
+              <option value="UBC">University of British Columbia</option>
+              <option value="EDINBURGH">University of Edinburgh</option>
+            </select>
+            <div class="steps">
+              <div class="steps-title">Pipeline Steps</div>
+              <div>1. Fetch emails from Gmail</div>
+              <div>2. Filter relevant news notices</div>
+              <div>3. Select the latest or clicked item</div>
+              <div>4. Generate Chinese copy</div>
+              <div>5. Render WeChat image</div>
+            </div>
+            <button class="btn primary" id="fetchBtn">Start Collection</button>
+            <div class="hint">Estimated time depends on inbox size</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div class="card-title">Selected Email to Copy</div>
+            <div class="badge">AI Process</div>
+          </div>
+          <div class="card-body stack">
+            <label>Selected News</label>
+            <div class="article-box" id="selectedBox">
+              <p>No email selected. Fetch or select from the sidebar.</p>
+            </div>
+            <button class="btn primary" id="generateBtn">Generate Copy + Image</button>
+            <button class="btn" id="copyBtn">Regenerate Copy</button>
+          </div>
+        </article>
+
+        <article class="card result">
+          <div class="card-head">
+            <div class="card-title">Text to Image</div>
+            <div class="badge">Direct</div>
+          </div>
+          <div class="card-body stack">
+            <label>Generated Article</label>
+            <div class="article-box" id="articleBox">
+              <p>Chinese article will appear here.</p>
+            </div>
+            <button class="btn primary" id="imageBtn">Generate Image</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="bottom">
+        <article class="card">
+          <div class="card-head">
+            <div class="card-title">Image Preview</div>
+            <div class="badge">Image Gen</div>
+          </div>
+          <div class="card-body">
+            <div class="preview" id="preview">Generate image first to preview output</div>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-head">
+            <div class="card-title">Runtime Status</div>
+            <div class="badge">Logs</div>
+          </div>
+          <div class="card-body">
+            <div class="status-line">
+              <div class="status-pill">Emails <strong id="emailCount">0</strong></div>
+              <div class="status-pill">Relevant <strong id="relevantCount">0</strong></div>
+              <div class="status-pill">Selected <strong id="selectedUid">none</strong></div>
+            </div>
+            <div class="log" id="log"></div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    let selectedUid = null;
+    let emails = [];
+
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, ch => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[ch]));
+    const log = (text) => {
+      $("log").textContent = `[${new Date().toLocaleTimeString()}] ${text}\n` + $("log").textContent;
+    };
+    const school = () => $("schoolSelect").value || null;
+    const setBusy = (busy) => {
+      ["fetchBtn","refreshBtn","generateBtn","copyBtn","imageBtn"].forEach(id => $(id).disabled = busy);
+    };
+
+    async function api(path, options = {}){
+      setBusy(true);
+      try{
+        const res = await fetch(path, {headers:{"Content-Type":"application/json"}, ...options});
+        const data = await res.json();
+        if(!res.ok) throw new Error(data.error || res.statusText);
+        return data;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function selectedEmail(){
+      return emails.find(email => String(email.uid) === String(selectedUid));
+    }
+
+    function renderEmails(){
+      $("relevantCount").textContent = String(emails.length);
+      $("emailList").innerHTML = emails.map(email => `
+        <button class="email ${String(email.uid) === String(selectedUid) ? "active" : ""}" data-uid="${email.uid}">
+          <div class="email-date">${escapeHtml(email.date)}</div>
+          <div class="email-subject">${escapeHtml(email.subject)}</div>
+          <div class="email-sender">${escapeHtml(email.sender)}</div>
+        </button>
+      `).join("") || `<div class="empty-side">No tasks yet. Start by fetching inbox content.</div>`;
+      document.querySelectorAll(".email").forEach(btn => {
+        btn.addEventListener("click", () => {
+          selectedUid = btn.dataset.uid;
+          renderEmails();
+          renderSelected();
+        });
+      });
+    }
+
+    function renderSelected(){
+      const email = selectedEmail();
+      $("selectedUid").textContent = selectedUid || "none";
+      if(!email){
+        $("selectedBox").innerHTML = `<p>No email selected. Fetch or select from the sidebar.</p>`;
+        return;
+      }
+      $("selectedBox").innerHTML = `
+        <h2>${escapeHtml(email.subject)}</h2>
+        <p>${escapeHtml(email.sender)}\n${escapeHtml(email.date)}\n\n${escapeHtml(email.preview)}</p>
+      `;
+    }
+
+    function renderArticle(article){
+      if(!article){
+        $("articleBox").innerHTML = `<p>Chinese article will appear here.</p>`;
+        return;
+      }
+      selectedUid = article.uid;
+      $("selectedUid").textContent = article.uid;
+      $("articleBox").innerHTML = `<h2>${escapeHtml(article.title)}</h2><p>${escapeHtml(article.body)}</p>`;
+      renderEmails();
+      renderSelected();
+    }
+
+    function renderImage(image){
+      if(!image || !image.image_path){
+        $("preview").innerHTML = `Generate image first to preview output`;
+        return;
+      }
+      $("preview").innerHTML = `<img src="/api/image?path=${encodeURIComponent(image.image_path)}&t=${Date.now()}" alt="Generated WeChat image">`;
+    }
+
+    async function loadState(){
+      log("Loading workspace");
+      const data = await api("/api/state", {method:"GET"});
+      emails = data.relevant || [];
+      $("emailCount").textContent = String(data.emails_count || 0);
+      if(!selectedUid && emails[0]) selectedUid = emails[0].uid;
+      renderEmails();
+      renderSelected();
+      renderArticle(data.current_article);
+      log(`Loaded ${emails.length} relevant emails`);
+    }
+
+    $("fetchBtn").addEventListener("click", async () => {
+      log("Fetching Gmail inbox");
+      const data = await api("/api/fetch", {method:"POST", body:"{}"});
+      emails = data.relevant || [];
+      $("emailCount").textContent = String(data.emails_count || 0);
+      selectedUid = emails[0] ? emails[0].uid : null;
+      renderEmails();
+      renderSelected();
+      log(`Fetched ${data.emails_count} emails`);
+    });
+    $("refreshBtn").addEventListener("click", loadState);
+    $("generateBtn").addEventListener("click", async () => {
+      log("Generating copy and image");
+      const data = await api("/api/generate", {method:"POST", body:JSON.stringify({uid:selectedUid, school:school()})});
+      renderArticle(data.article);
+      renderImage(data.image);
+      log("Copy and image generated");
+    });
+    $("copyBtn").addEventListener("click", async () => {
+      log("Regenerating copy");
+      const data = await api("/api/regenerate-copy", {method:"POST", body:JSON.stringify({uid:selectedUid})});
+      renderArticle(data.article);
+      log("Copy regenerated");
+    });
+    $("imageBtn").addEventListener("click", async () => {
+      log("Generating image");
+      const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({school:school()})});
+      renderImage(data.image);
+      log("Image generated");
+    });
+    loadState().catch(err => log(`Error: ${err.message}`));
+  </script>
+</body>
+</html>

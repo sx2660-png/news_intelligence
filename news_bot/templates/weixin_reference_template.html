@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  @font-face{
+    font-family:'SourceHanSerifSC';
+    src:url('{{ font_src }}') format('opentype');
+    font-weight:200 900;
+    font-style:normal;
+    font-display:block;
+  }
+
+  :root{
+    --page-width:  {{ page_width|default(540) }}px;
+    --page-height: {{ min_height|default(2200) }}px;
+    --pad: 30px;
+    --column-width: calc(var(--page-width) - 2 * var(--pad));
+
+    --refbox-narrow: 60px;
+    --refbox-width: calc(var(--column-width) - var(--refbox-narrow));
+
+    --brand-color: {{ brand_color|default('#57068c') }};
+  }
+
+  html,body{
+    margin:0;
+    background:#fff;
+    color:#222;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+
+    font-family:'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', 'SourceHanSerifSC', serif;
+    font-weight:400;
+    font-variation-settings:'wght' 400;
+    font-synthesis:none;
+  }
+
+  #page-root{
+    width: var(--page-width);
+    min-height: var(--page-height);
+    margin: 0 auto;
+    padding: var(--pad);
+    box-sizing: border-box;
+    position: relative;
+
+    font-family: inherit;
+    font-weight: inherit;
+    font-variation-settings: inherit;
+  }
+
+  .refbox{
+    width: var(--refbox-width);
+    margin: 0 auto;
+    border-top: 3.5px solid var(--brand-color);
+    padding-top: 12px;
+
+    font-family: inherit;
+    font-weight: inherit;
+    font-variation-settings: inherit;
+  }
+
+  h1.title{
+    margin:0 0 10px 0;
+    font-family: inherit;
+    font-weight:500;
+    font-variation-settings:'wght' 500;
+    font-size:25px;
+    line-height:1.00;
+    color:#222;
+  }
+
+  ol{
+    width: 100%;
+    margin:0;
+    padding-left:1.2em;
+
+    font-family: inherit;
+    font-weight:400;
+    font-variation-settings:'wght' 400;
+
+    font-size:17px;
+    line-height:1.1;
+    letter-spacing:1.5px;
+    color:#888888;
+
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+
+  li{
+    margin-bottom:.5em;
+    font-family: inherit;
+    font-weight: inherit;
+    font-variation-settings: inherit;
+  }
+
+  .refbox *{
+    font-family: inherit;
+    font-variation-settings: inherit;
+  }
+</style>
+
+<div id="page-root">
+  <div class="refbox">
+    <h1 class="title">资料来源：</h1>
+    {% if urls and urls|length > 0 %}
+      <ol>
+        {% for u in urls %}
+          <li>{{ u }}</li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <ol><li>（无可用链接）</li></ol>
+    {% endif %}
+  </div>
+</div>

@@ -20,16 +20,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 
-# ── Locate NEXUS project and inject it into sys.path ──────────────────
 _THIS_DIR = Path(__file__).parent.resolve()
-_NEXUS_PATH = _THIS_DIR.parent / "NEXUS-main"
-
-if not _NEXUS_PATH.exists():
-    print(f"[!] NEXUS-main not found at: {_NEXUS_PATH}")
-    print("    Please clone https://github.com/frankz2020/NEXUS next to this folder.")
-    sys.exit(1)
-
-sys.path.insert(0, str(_NEXUS_PATH))
 
 # The project path contains Chinese characters and spaces. Path.resolve() returns
 # a percent-encoded file:// URI that Chromium cannot load. Fix: cache the font
@@ -38,7 +29,7 @@ sys.path.insert(0, str(_NEXUS_PATH))
 import shutil as _shutil
 import news_bot.processing.image_generator as _ig
 
-# Prefer the font bundled with this project; fall back to NEXUS-main copy.
+# Prefer the top-level project font; fall back to the bundled image module copy.
 _FONT_SRC = _THIS_DIR / "assets" / "fonts" / "SourceHanSerifSC-VF.otf"
 if not _FONT_SRC.exists():
     _FONT_SRC = _ig.FONTS_DIR / "SourceHanSerifSC-VF.otf"
