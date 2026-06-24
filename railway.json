@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "deploy": {
-    "startCommand": "python -m playwright install chromium && gunicorn app:app --bind 0.0.0.0:$PORT --timeout 600"
+    "startCommand": "gunicorn app:app --bind 0.0.0.0:$PORT --timeout 600"
   }
 }

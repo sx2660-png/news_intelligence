@@ -1,0 +1,10 @@
+.git
+.env
+.DS_Store
+venv
+__pycache__
+*.pyc
+wechat_images
+emails_output.json
+articles_output.json
+assets
