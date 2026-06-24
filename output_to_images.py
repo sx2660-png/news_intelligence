@@ -17,6 +17,7 @@ import sys
 import os
 import json
 import argparse
+import base64
 from pathlib import Path
 from datetime import datetime
 
@@ -35,14 +36,27 @@ if not _FONT_SRC.exists():
     _FONT_SRC = _ig.FONTS_DIR / "SourceHanSerifSC-VF.otf"
 
 _FONT_CACHE = Path.home() / ".nexus_fonts" / "SourceHanSerifSC-VF.otf"
-if _FONT_SRC.exists() and not _FONT_CACHE.exists():
+_USE_EMBEDDED_FONT = os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("WXIMG_EMBED_FONT") == "1"
+
+if _USE_EMBEDDED_FONT and _FONT_SRC.exists():
+    _FONT_DATA_URI = "data:font/otf;base64," + base64.b64encode(_FONT_SRC.read_bytes()).decode("ascii")
+    _ig._font_file_uri = lambda: _FONT_DATA_URI
+    _font_status = f"✓ embedded data URI from {_FONT_SRC}"
+elif _FONT_SRC.exists() and not _FONT_CACHE.exists():
     _FONT_CACHE.parent.mkdir(parents=True, exist_ok=True)
     print("[i] Caching font to ~/.nexus_fonts/ (~53MB, one-time only)...")
     _shutil.copy2(str(_FONT_SRC.resolve()), str(_FONT_CACHE))
-if _FONT_CACHE.exists():
     _ig._font_file_uri = lambda: _FONT_CACHE.as_uri()
+    _font_status = f"✓ {_FONT_CACHE}"
+elif _FONT_CACHE.exists():
+    _ig._font_file_uri = lambda: _FONT_CACHE.as_uri()
+    _font_status = f"✓ {_FONT_CACHE}"
+elif _FONT_SRC.exists():
+    _ig._font_file_uri = lambda: _FONT_SRC.resolve().as_uri()
+    _font_status = f"✓ {_FONT_SRC}"
+else:
+    _font_status = "✗ 未找到（将使用系统宋体回退）"
 
-_font_status = f"✓ {_FONT_CACHE}" if _FONT_CACHE.exists() else "✗ 未找到（将使用系统宋体回退）"
 print(f"[字体] 中文: SourceHanSerifSC (思源宋体可变字体)  →  {_font_status}")
 print(f"[字体] 英文: SourceHanSerifSC 内置拉丁字形 (Source Han Serif Latin)")
 
