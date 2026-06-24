@@ -100,6 +100,11 @@ def _save_single_article(article: dict) -> None:
     _write_json(ARTICLES_FILE, [article])
 
 
+def _current_article() -> dict | None:
+    articles = _read_json(ARTICLES_FILE, [])
+    return articles[0] if articles else None
+
+
 def _latest_image_path(result: dict) -> str:
     files = result.get("generated_files") or []
     return files[0] if files else ""
@@ -195,6 +200,24 @@ def regenerate_image():
         return jsonify({"error": "No article exists yet"}), 404
     image = _generate_image_for_current_article(school=school)
     return jsonify({"image": image})
+
+
+@app.post("/api/article")
+def update_article():
+    payload = request.get_json(silent=True) or {}
+    current = _current_article()
+    if not current:
+        return jsonify({"error": "No article exists yet"}), 404
+
+    title = (payload.get("title") or "").strip()
+    body = (payload.get("body") or "").strip()
+    if not title or not body:
+        return jsonify({"error": "Title and body are required"}), 400
+
+    current["title"] = title
+    current["body"] = body
+    _save_single_article(current)
+    return jsonify({"article": current})
 
 
 @app.get("/api/image")

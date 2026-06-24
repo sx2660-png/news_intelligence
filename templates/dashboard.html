@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LIVE Weekly Studio</title>
+  <title>News Intelligence Studio</title>
   <style>
     :root{
       --bg:#0b0b0c;
@@ -39,7 +39,9 @@
     .user-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .role{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px}
     .ghost{height:30px;border:1px solid var(--border);background:#0d0d0f;color:var(--sub);border-radius:5px;padding:0 10px;cursor:pointer}
-    .guide{margin-top:12px;height:32px;display:inline-flex;align-items:center;border:1px solid var(--border);background:#151518;color:var(--sub);border-radius:5px;padding:0 12px;font-size:12px}
+    .side-actions{display:grid;gap:10px;margin-top:14px}
+    .pipeline{margin-top:14px;background:#161618;border:1px solid #222226;border-radius:4px;padding:14px 14px;color:var(--sub);line-height:1.65;font-size:13px}
+    .pipeline-title{font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
     .task-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 10px}
     .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
     .tabs{display:flex;gap:4px}
@@ -56,7 +58,7 @@
     .hero{margin-bottom:32px}
     .hero h1{margin:0;font-size:26px;letter-spacing:0;font-weight:800}
     .hero p{margin:12px 0 0;color:var(--sub)}
-    .cards{display:grid;grid-template-columns:repeat(3,minmax(270px,1fr));gap:24px;align-items:start}
+    .cards{display:grid;grid-template-columns:minmax(340px,1fr) minmax(420px,1.25fr);gap:24px;align-items:start}
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);min-height:360px;overflow:hidden}
     .card-head{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#141416,#111113)}
     .card-title{font-size:15px;font-weight:800}
@@ -77,6 +79,9 @@
     .article-box{background:#151518;border:1px solid var(--border);border-radius:5px;padding:14px;min-height:210px}
     .article-box h2{margin:0 0 12px;font-size:18px;line-height:1.35}
     .article-box p{margin:0;color:#d6d6dc;line-height:1.7;white-space:pre-wrap}
+    .editor-title{height:auto;min-height:48px;font-size:22px;font-weight:800;line-height:1.25;padding:12px 14px}
+    .editor-body{min-height:360px;font-size:16px;line-height:1.75}
+    .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .preview{background:#151518;border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
     .bottom{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
@@ -84,7 +89,7 @@
     .status-line{display:flex;gap:8px;flex-wrap:wrap}
     .status-pill{border:1px solid var(--border);background:#151518;border-radius:5px;padding:8px 10px;color:var(--sub);font-family:var(--mono);font-size:11px}
     .status-pill strong{color:var(--text)}
-    @media (max-width:1280px){.cards{grid-template-columns:1fr 1fr}.card.result{grid-column:1/-1}}
+    @media (max-width:1280px){.cards{grid-template-columns:1fr}}
     @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{min-height:420px}.main{padding:28px 18px}.cards,.bottom{grid-template-columns:1fr}}
   </style>
 </head>
@@ -92,7 +97,7 @@
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-title">LIVE Weekly <span>Studio</span></div>
+        <div class="brand-title">News Intelligence <span>Studio</span></div>
         <div class="user">
           <div class="user-left">
             <div class="avatar">N</div>
@@ -103,7 +108,26 @@
           </div>
           <button class="ghost" id="refreshBtn">Refresh</button>
         </div>
-        <div class="guide">操作指南</div>
+        <div class="side-actions">
+          <select class="field" id="schoolSelect">
+            <option value="">Auto Detect</option>
+            <option value="NYU">New York University (NYU)</option>
+            <option value="USC">University of Southern California</option>
+            <option value="EMORY">Emory University</option>
+            <option value="UCD">UC Davis</option>
+            <option value="UBC">University of British Columbia</option>
+            <option value="EDINBURGH">University of Edinburgh</option>
+          </select>
+          <button class="btn primary" id="fetchBtn">Fetch Gmail</button>
+        </div>
+        <div class="pipeline">
+          <div class="pipeline-title">Pipeline Steps</div>
+          <div>1. Fetch emails from Gmail</div>
+          <div>2. Filter relevant news notices</div>
+          <div>3. Select the latest or clicked item</div>
+          <div>4. Generate Chinese copy</div>
+          <div>5. Render WeChat image</div>
+        </div>
       </div>
       <div class="task-head">
         <div class="eyebrow">Active Emails</div>
@@ -123,35 +147,6 @@
       </header>
 
       <section class="cards">
-        <article class="card">
-          <div class="card-head">
-            <div class="card-title">Automated News Ingestion</div>
-            <div class="badge">Fetch</div>
-          </div>
-          <div class="card-body">
-            <label>Select School</label>
-            <select class="field" id="schoolSelect">
-              <option value="">Auto Detect</option>
-              <option value="NYU">New York University (NYU)</option>
-              <option value="USC">University of Southern California</option>
-              <option value="EMORY">Emory University</option>
-              <option value="UCD">UC Davis</option>
-              <option value="UBC">University of British Columbia</option>
-              <option value="EDINBURGH">University of Edinburgh</option>
-            </select>
-            <div class="steps">
-              <div class="steps-title">Pipeline Steps</div>
-              <div>1. Fetch emails from Gmail</div>
-              <div>2. Filter relevant news notices</div>
-              <div>3. Select the latest or clicked item</div>
-              <div>4. Generate Chinese copy</div>
-              <div>5. Render WeChat image</div>
-            </div>
-            <button class="btn primary" id="fetchBtn">Start Collection</button>
-            <div class="hint">Estimated time depends on inbox size</div>
-          </div>
-        </article>
-
         <article class="card">
           <div class="card-head">
             <div class="card-title">Selected Email to Copy</div>
@@ -177,7 +172,10 @@
             <div class="article-box" id="articleBox">
               <p>Chinese article will appear here.</p>
             </div>
-            <button class="btn primary" id="imageBtn">Generate Image</button>
+            <div class="inline-actions">
+              <button class="btn" id="saveBtn">Save Edits</button>
+              <button class="btn primary" id="imageBtn">Generate Image</button>
+            </div>
           </div>
         </article>
       </section>
@@ -213,6 +211,7 @@
   <script>
     let selectedUid = null;
     let emails = [];
+    let currentArticle = null;
 
     const $ = (id) => document.getElementById(id);
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, ch => ({
@@ -223,7 +222,7 @@
     };
     const school = () => $("schoolSelect").value || null;
     const setBusy = (busy) => {
-      ["fetchBtn","refreshBtn","generateBtn","copyBtn","imageBtn"].forEach(id => $(id).disabled = busy);
+      ["fetchBtn","refreshBtn","generateBtn","copyBtn","saveBtn","imageBtn"].forEach(id => $(id).disabled = busy);
     };
 
     async function api(path, options = {}){
@@ -276,13 +275,41 @@
     function renderArticle(article){
       if(!article){
         $("articleBox").innerHTML = `<p>Chinese article will appear here.</p>`;
+        currentArticle = null;
         return;
       }
+      currentArticle = article;
       selectedUid = article.uid;
       $("selectedUid").textContent = article.uid;
-      $("articleBox").innerHTML = `<h2>${escapeHtml(article.title)}</h2><p>${escapeHtml(article.body)}</p>`;
+      $("articleBox").innerHTML = `
+        <label for="articleTitle">Title</label>
+        <textarea class="field editor-title" id="articleTitle">${escapeHtml(article.title)}</textarea>
+        <label for="articleBody" style="margin-top:14px">Content</label>
+        <textarea class="field editor-body" id="articleBody">${escapeHtml(article.body)}</textarea>
+      `;
       renderEmails();
       renderSelected();
+    }
+
+    function editedArticlePayload(){
+      const titleEl = $("articleTitle");
+      const bodyEl = $("articleBody");
+      if(!titleEl || !bodyEl) throw new Error("No generated article to edit");
+      return {
+        title: titleEl.value.trim(),
+        body: bodyEl.value.trim()
+      };
+    }
+
+    async function saveEdits(){
+      log("Saving edited article");
+      const data = await api("/api/article", {
+        method:"POST",
+        body:JSON.stringify(editedArticlePayload())
+      });
+      currentArticle = data.article;
+      log("Article edits saved");
+      return data.article;
     }
 
     function renderImage(image){
@@ -329,11 +356,23 @@
       renderArticle(data.article);
       log("Copy regenerated");
     });
+    $("saveBtn").addEventListener("click", async () => {
+      try{
+        await saveEdits();
+      } catch(err) {
+        log(`Error: ${err.message}`);
+      }
+    });
     $("imageBtn").addEventListener("click", async () => {
-      log("Generating image");
-      const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({school:school()})});
-      renderImage(data.image);
-      log("Image generated");
+      try{
+        await saveEdits();
+        log("Generating image");
+        const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({school:school()})});
+        renderImage(data.image);
+        log("Image generated");
+      } catch(err) {
+        log(`Error: ${err.message}`);
+      }
     });
     loadState().catch(err => log(`Error: ${err.message}`));
   </script>
