@@ -109,15 +109,6 @@
           <button class="ghost" id="refreshBtn">Refresh</button>
         </div>
         <div class="side-actions">
-          <select class="field" id="schoolSelect">
-            <option value="">Auto Detect</option>
-            <option value="NYU">New York University (NYU)</option>
-            <option value="USC">University of Southern California</option>
-            <option value="EMORY">Emory University</option>
-            <option value="UCD">UC Davis</option>
-            <option value="UBC">University of British Columbia</option>
-            <option value="EDINBURGH">University of Edinburgh</option>
-          </select>
           <button class="btn primary" id="fetchBtn">Fetch Gmail</button>
         </div>
         <div class="pipeline">
@@ -220,7 +211,6 @@
     const log = (text) => {
       $("log").textContent = `[${new Date().toLocaleTimeString()}] ${text}\n` + $("log").textContent;
     };
-    const school = () => $("schoolSelect").value || null;
     const setBusy = (busy) => {
       ["fetchBtn","refreshBtn","generateBtn","copyBtn","saveBtn","imageBtn"].forEach(id => $(id).disabled = busy);
     };
@@ -345,7 +335,7 @@
     $("refreshBtn").addEventListener("click", loadState);
     $("generateBtn").addEventListener("click", async () => {
       log("Generating copy and image");
-      const data = await api("/api/generate", {method:"POST", body:JSON.stringify({uid:selectedUid, school:school()})});
+      const data = await api("/api/generate", {method:"POST", body:JSON.stringify({uid:selectedUid})});
       renderArticle(data.article);
       renderImage(data.image);
       log("Copy and image generated");
@@ -367,7 +357,7 @@
       try{
         await saveEdits();
         log("Generating image");
-        const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({school:school()})});
+        const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({})});
         renderImage(data.image);
         log("Image generated");
       } catch(err) {
