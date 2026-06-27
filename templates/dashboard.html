@@ -40,8 +40,13 @@
     .role{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px}
     .ghost{height:30px;border:1px solid var(--border);background:#0d0d0f;color:var(--sub);border-radius:5px;padding:0 10px;cursor:pointer}
     .side-actions{display:grid;gap:10px;margin-top:14px}
-    .pipeline{margin-top:14px;background:#161618;border:1px solid #222226;border-radius:4px;padding:14px 14px;color:var(--sub);line-height:1.65;font-size:13px}
-    .pipeline-title{font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+    .side-panel{margin-top:14px;background:#161618;border:1px solid #222226;border-radius:4px;color:var(--sub);line-height:1.65;font-size:13px;overflow:hidden}
+    .side-panel summary{list-style:none;cursor:pointer;padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between}
+    .side-panel summary::-webkit-details-marker{display:none}
+    .side-panel summary::after{content:"+";font-size:13px;color:var(--muted)}
+    .side-panel[open] summary{border-bottom:1px solid #222226}
+    .side-panel[open] summary::after{content:"-"}
+    .side-panel-body{padding:12px 14px}
     .task-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 10px}
     .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
     .tabs{display:flex;gap:4px}
@@ -84,7 +89,7 @@
     .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .preview{background:#151518;border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
-    .bottom{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
+    .bottom{display:grid;grid-template-columns:1fr;gap:24px;margin-top:24px}
     .log{background:#080809;border:1px solid var(--border);border-radius:var(--radius);min-height:160px;padding:16px;font-family:var(--mono);font-size:12px;color:var(--sub);white-space:pre-wrap;line-height:1.55}
     .status-line{display:flex;gap:8px;flex-wrap:wrap}
     .status-pill{border:1px solid var(--border);background:#151518;border-radius:5px;padding:8px 10px;color:var(--sub);font-family:var(--mono);font-size:11px}
@@ -111,14 +116,27 @@
         <div class="side-actions">
           <button class="btn primary" id="fetchBtn">Fetch Gmail</button>
         </div>
-        <div class="pipeline">
-          <div class="pipeline-title">Pipeline Steps</div>
-          <div>1. Fetch emails from Gmail</div>
-          <div>2. Filter relevant news notices</div>
-          <div>3. Select the latest or clicked item</div>
-          <div>4. Generate Chinese copy</div>
-          <div>5. Render WeChat image</div>
-        </div>
+        <details class="side-panel">
+          <summary>Pipeline Steps</summary>
+          <div class="side-panel-body">
+            <div>1. Fetch emails from Gmail</div>
+            <div>2. Filter relevant news notices</div>
+            <div>3. Select the latest or clicked item</div>
+            <div>4. Generate Chinese copy</div>
+            <div>5. Render WeChat image</div>
+          </div>
+        </details>
+        <details class="side-panel">
+          <summary>Runtime Status</summary>
+          <div class="side-panel-body">
+            <div class="status-line">
+              <div class="status-pill">Emails <strong id="emailCount">0</strong></div>
+              <div class="status-pill">Relevant <strong id="relevantCount">0</strong></div>
+              <div class="status-pill">Selected <strong id="selectedUid">none</strong></div>
+            </div>
+            <div class="log" id="log"></div>
+          </div>
+        </details>
       </div>
       <div class="task-head">
         <div class="eyebrow">Active Emails</div>
@@ -165,7 +183,7 @@
             </div>
             <div class="inline-actions">
               <button class="btn" id="saveBtn">Save Edits</button>
-              <button class="btn primary" id="imageBtn">Generate Image</button>
+              <button class="btn primary" id="imageBtn">Generate Image from Edits</button>
             </div>
           </div>
         </article>
@@ -179,20 +197,6 @@
           </div>
           <div class="card-body">
             <div class="preview" id="preview">Generate image first to preview output</div>
-          </div>
-        </article>
-        <article class="card">
-          <div class="card-head">
-            <div class="card-title">Runtime Status</div>
-            <div class="badge">Logs</div>
-          </div>
-          <div class="card-body">
-            <div class="status-line">
-              <div class="status-pill">Emails <strong id="emailCount">0</strong></div>
-              <div class="status-pill">Relevant <strong id="relevantCount">0</strong></div>
-              <div class="status-pill">Selected <strong id="selectedUid">none</strong></div>
-            </div>
-            <div class="log" id="log"></div>
           </div>
         </article>
       </section>
@@ -216,14 +220,15 @@
     };
 
     async function api(path, options = {}){
+      const {keepBusy = false, ...fetchOptions} = options;
       setBusy(true);
       try{
-        const res = await fetch(path, {headers:{"Content-Type":"application/json"}, ...options});
+        const res = await fetch(path, {headers:{"Content-Type":"application/json"}, ...fetchOptions});
         const data = await res.json();
         if(!res.ok) throw new Error(data.error || res.statusText);
         return data;
       } finally {
-        setBusy(false);
+        if(!keepBusy) setBusy(false);
       }
     }
 
@@ -302,6 +307,20 @@
       return data.article;
     }
 
+    async function generateCopyAndImage(uid){
+      if(!uid) throw new Error("No email selected");
+      log("Generating Chinese copy");
+      log("Rendering WeChat image");
+      const data = await api("/api/generate", {
+        method:"POST",
+        body:JSON.stringify({uid})
+      });
+      renderArticle(data.article);
+      renderImage(data.image);
+      log("Copy and image generated");
+      return data;
+    }
+
     function renderImage(image){
       if(!image || !image.image_path){
         $("preview").innerHTML = `Generate image first to preview output`;
@@ -323,22 +342,38 @@
     }
 
     $("fetchBtn").addEventListener("click", async () => {
-      log("Fetching Gmail inbox");
-      const data = await api("/api/fetch", {method:"POST", body:"{}"});
-      emails = data.relevant || [];
-      $("emailCount").textContent = String(data.emails_count || 0);
-      selectedUid = emails[0] ? emails[0].uid : null;
-      renderEmails();
-      renderSelected();
-      log(`Fetched ${data.emails_count} emails`);
+      try{
+        log("Fetching Gmail inbox");
+        const data = await api("/api/fetch", {method:"POST", body:"{}", keepBusy:true});
+        emails = data.relevant || [];
+        $("emailCount").textContent = String(data.emails_count || 0);
+        selectedUid = emails[0] ? emails[0].uid : null;
+        renderEmails();
+        renderSelected();
+        log(`Fetched ${data.emails_count} emails`);
+
+        if(!selectedUid){
+          renderArticle(null);
+          renderImage(null);
+          log("No relevant news notices found. Pipeline stopped.");
+          return;
+        }
+
+        log("Selected latest relevant email");
+        await generateCopyAndImage(selectedUid);
+      } catch(err) {
+        log(`Error: ${err.message}`);
+      } finally {
+        setBusy(false);
+      }
     });
     $("refreshBtn").addEventListener("click", loadState);
     $("generateBtn").addEventListener("click", async () => {
-      log("Generating copy and image");
-      const data = await api("/api/generate", {method:"POST", body:JSON.stringify({uid:selectedUid})});
-      renderArticle(data.article);
-      renderImage(data.image);
-      log("Copy and image generated");
+      try{
+        await generateCopyAndImage(selectedUid);
+      } catch(err) {
+        log(`Error: ${err.message}`);
+      }
     });
     $("copyBtn").addEventListener("click", async () => {
       log("Regenerating copy");
