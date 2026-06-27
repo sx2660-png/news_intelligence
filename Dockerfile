@@ -3,13 +3,13 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    WXIMG_EMBED_FONT=1
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    fontconfig \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -45,4 +45,4 @@ RUN pip install -r requirements.txt \
 
 COPY . .
 
-CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --timeout 600
+CMD ["./start.sh"]

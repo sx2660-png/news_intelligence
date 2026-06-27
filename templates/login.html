@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS_Breaking NewsStudio — Sign In</title>
+    <style>
+        :root {
+            --bg-base: #0c0c0e;
+            --bg-card: #141416;
+            --bg-input: #1a1a1e;
+            --border: rgba(255, 255, 255, 0.08);
+            --border-focus: rgba(255, 255, 255, 0.18);
+            --text-primary: #fafafa;
+            --text-secondary: #a1a1aa;
+            --text-muted: #52525b;
+            --error: #dc2626;
+            --error-soft: rgba(220, 38, 38, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
+
+        body {
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg-base);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            position: relative;
+        }
+
+        .brand-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 48px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-side::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 1px;
+            height: 100%;
+            background: var(--border);
+        }
+
+        .brand-header { position: relative; z-index: 1; }
+        .brand-logo { display: flex; align-items: center; gap: 12px; }
+
+        .logo-mark {
+            width: 36px;
+            height: 36px;
+            background: var(--text-primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-mark svg {
+            width: 20px;
+            height: 20px;
+            color: var(--bg-base);
+        }
+
+        .logo-text {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.2px;
+        }
+
+        .brand-visual {
+            position: absolute;
+            top: 50%;
+            left: 48px;
+            right: 48px;
+            transform: translateY(-50%);
+            z-index: 0;
+        }
+
+        .big-type {
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: clamp(78px, 12vw, 154px);
+            font-weight: 400;
+            line-height: 1;
+            color: transparent;
+            -webkit-text-stroke: 1px rgba(255, 255, 255, 0.06);
+            user-select: none;
+            margin-bottom: 24px;
+        }
+
+        .big-type-solid {
+            font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+            font-size: clamp(24px, 4vw, 42px);
+            font-weight: 500;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+
+        .brand-footer {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .brand-footer p {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+        }
+
+        .status-dot {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+        }
+
+        .form-side {
+            width: 460px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px;
+            background: var(--bg-card);
+        }
+
+        .form-container { width: 100%; max-width: 320px; }
+        .form-header { margin-bottom: 36px; }
+
+        .form-header h2 {
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+        }
+
+        .login-form { display: flex; flex-direction: column; gap: 18px; }
+        .form-group { display: flex; flex-direction: column; gap: 8px; }
+
+        .form-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .input-wrapper { position: relative; }
+
+        .form-input {
+            width: 100%;
+            padding: 13px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 14px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.03);
+        }
+
+        .form-input::placeholder { color: var(--text-muted); }
+
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .password-toggle:hover { color: var(--text-secondary); }
+        .password-toggle svg { width: 16px; height: 16px; display: block; }
+
+        .btn-submit {
+            width: 100%;
+            padding: 13px 20px;
+            margin-top: 6px;
+            background: var(--text-primary);
+            border: none;
+            border-radius: 8px;
+            color: var(--bg-base);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .btn-submit:hover { opacity: 0.9; }
+        .btn-submit:active { transform: scale(0.98); }
+        .btn-text { display: flex; align-items: center; justify-content: center; }
+        .btn-submit.loading .btn-text { opacity: 0; }
+
+        .spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 18px;
+            height: 18px;
+            border: 2px solid transparent;
+            border-top-color: var(--bg-base);
+            border-radius: 50%;
+            opacity: 0;
+        }
+
+        .btn-submit.loading .spinner {
+            opacity: 1;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        .error-message {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            background: var(--error-soft);
+            border: 1px solid rgba(220, 38, 38, 0.2);
+            border-radius: 8px;
+            font-size: 13px;
+            color: #fca5a5;
+        }
+
+        .error-message.visible { display: flex; }
+        .error-message svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--error); }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; }
+            .brand-side { flex: none; padding: 32px 24px; min-height: 260px; }
+            .brand-visual { left: 24px; right: 24px; }
+            .big-type { font-size: 76px; }
+            .big-type-solid { font-size: 28px; }
+            .form-side { width: 100%; flex: 1; padding: 32px 24px; }
+        }
+
+        @media (max-width: 480px) {
+            .brand-visual { display: none; }
+            .form-container { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="brand-side">
+        <div class="brand-header">
+            <div class="brand-logo">
+                <div class="logo-mark">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                        <polyline points="2 17 12 22 22 17"/>
+                        <polyline points="2 12 12 17 22 12"/>
+                    </svg>
+                </div>
+                <span class="logo-text">News Intelligence</span>
+            </div>
+        </div>
+
+        <div class="brand-visual">
+            <div class="big-type">NEWS ENGINE</div>
+            <div class="big-type-solid">*.INTEL STUDIO</div>
+        </div>
+
+        <div class="brand-footer">
+            <p>v1.0</p>
+            <span class="status-dot">System online</span>
+        </div>
+    </div>
+
+    <div class="form-side">
+        <div class="form-container">
+            <div class="form-header">
+                <h2>Sign in</h2>
+            </div>
+
+            <form class="login-form" method="POST" action="/login" id="loginForm">
+                <div class="error-message {% if error %}visible{% endif %}" id="errorMessage">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>{{ error or 'Invalid credentials' }}</span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="username">Username</label>
+                    <div class="input-wrapper">
+                        <input type="text" class="form-input" id="username" name="username" placeholder="Enter username" autocomplete="username" required autofocus>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <div class="input-wrapper">
+                        <input type="password" class="form-input" id="password" name="password" placeholder="Enter password" autocomplete="current-password" required style="padding-right: 40px;">
+                        <button type="button" class="password-toggle" id="togglePassword" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="eyeIcon">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit" id="submitBtn">
+                    <span class="btn-text">Continue</span>
+                    <div class="spinner"></div>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const toggleBtn = document.getElementById("togglePassword");
+        const passwordInput = document.getElementById("password");
+        const eyeIcon = document.getElementById("eyeIcon");
+
+        toggleBtn.addEventListener("click", () => {
+            const isPassword = passwordInput.type === "password";
+            passwordInput.type = isPassword ? "text" : "password";
+            eyeIcon.innerHTML = isPassword
+                ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+                : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+        });
+
+        const form = document.getElementById("loginForm");
+        const submitBtn = document.getElementById("submitBtn");
+        form.addEventListener("submit", () => {
+            submitBtn.classList.add("loading");
+        });
+    </script>
+</body>
+</html>

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 from openai import OpenAI
 
 import content_generator
@@ -24,6 +24,29 @@ ARTICLES_FILE = BASE_DIR / content_generator.OUTPUT_FILE
 OUTPUT_DIR = BASE_DIR / output_to_images.OUTPUT_DIR
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-news-intelligence-session-key")
+
+
+def _auth_enabled() -> bool:
+    return os.environ.get("APP_AUTH_ENABLED", "1").lower() not in {"0", "false", "no", "off"}
+
+
+def _is_authenticated() -> bool:
+    return session.get("authenticated") is True
+
+
+@app.before_request
+def require_login():
+    if not _auth_enabled():
+        return None
+    allowed_endpoints = {"login", "health", "static"}
+    if request.endpoint in allowed_endpoints:
+        return None
+    if request.path in ("/healthz",):
+        return None
+    if not _is_authenticated():
+        return redirect(url_for("login"))
+    return None
 
 
 def _read_json(path: Path, default):
@@ -128,6 +151,32 @@ def _generate_image_for_current_article(school: str | None = None) -> dict:
 @app.get("/")
 def index():
     return render_template("dashboard.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not _auth_enabled():
+        session["authenticated"] = True
+        return redirect(url_for("index"))
+
+    error = None
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        expected_user = os.environ.get("APP_USERNAME", "admin")
+        expected_password = os.environ.get("APP_PASSWORD", "admin123")
+        if username == expected_user and password == expected_password:
+            session["authenticated"] = True
+            return redirect(url_for("index"))
+        error = "Invalid username or password"
+
+    return render_template("login.html", error=error)
+
+
+@app.get("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.get("/health")

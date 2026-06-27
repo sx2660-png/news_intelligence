@@ -17,16 +17,14 @@ import sys
 import os
 import json
 import argparse
-import base64
 from pathlib import Path
 from datetime import datetime
 
 _THIS_DIR = Path(__file__).parent.resolve()
 
-# The project path contains Chinese characters and spaces. Path.resolve() returns
-# a percent-encoded file:// URI that Chromium cannot load. Fix: cache the font
-# at a plain ASCII path (~/.nexus_fonts) and monkey-patch _font_file_uri so
-# the encoded path is never used.  ~/.nexus_fonts persists across reboots.
+# Keep the NEXUS font loading strategy: Chromium reads SourceHanSerifSC-VF.otf
+# through a file:// URI, while start.sh also registers it with fontconfig as a
+# runtime fallback on Railway.
 import shutil as _shutil
 import news_bot.processing.image_generator as _ig
 
@@ -36,13 +34,8 @@ if not _FONT_SRC.exists():
     _FONT_SRC = _ig.FONTS_DIR / "SourceHanSerifSC-VF.otf"
 
 _FONT_CACHE = Path.home() / ".nexus_fonts" / "SourceHanSerifSC-VF.otf"
-_USE_EMBEDDED_FONT = os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("WXIMG_EMBED_FONT") == "1"
 
-if _USE_EMBEDDED_FONT and _FONT_SRC.exists():
-    _FONT_DATA_URI = "data:font/otf;base64," + base64.b64encode(_FONT_SRC.read_bytes()).decode("ascii")
-    _ig._font_file_uri = lambda: _FONT_DATA_URI
-    _font_status = f"✓ embedded data URI from {_FONT_SRC}"
-elif _FONT_SRC.exists() and not _FONT_CACHE.exists():
+if _FONT_SRC.exists() and not _FONT_CACHE.exists():
     _FONT_CACHE.parent.mkdir(parents=True, exist_ok=True)
     print("[i] Caching font to ~/.nexus_fonts/ (~53MB, one-time only)...")
     _shutil.copy2(str(_FONT_SRC.resolve()), str(_FONT_CACHE))
