@@ -8,9 +8,15 @@ if [ -f "$FONT_SRC" ]; then
   mkdir -p "$USER_FONT_DIR"
   cp "$FONT_SRC" "$USER_FONT_DIR/"
   if command -v fc-cache >/dev/null 2>&1; then
-    fc-cache -f -v "$USER_FONT_DIR" >/dev/null 2>&1 || true
+    fc-cache -f -v "$USER_FONT_DIR" || true
   fi
   echo "[fonts] Installed SourceHanSerifSC-VF.otf into $USER_FONT_DIR"
+  if command -v fc-match >/dev/null 2>&1; then
+    echo "[fonts] fc-match Source Han Serif SC: $(fc-match 'Source Han Serif SC' || true)"
+    echo "[fonts] fc-match SourceHanSerifSC: $(fc-match 'SourceHanSerifSC' || true)"
+  else
+    echo "[fonts] fc-match not found, skipping font match diagnostics"
+  fi
 else
   echo "[fonts] SourceHanSerifSC-VF.otf not found at $FONT_SRC"
 fi
