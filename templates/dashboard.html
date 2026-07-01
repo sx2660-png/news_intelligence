@@ -63,7 +63,9 @@
     .hero{margin-bottom:32px}
     .hero h1{margin:0;font-size:26px;letter-spacing:0;font-weight:800}
     .hero p{margin:12px 0 0;color:var(--sub)}
-    .cards{display:grid;grid-template-columns:minmax(340px,1fr) minmax(420px,1.25fr);gap:24px;align-items:start}
+    .production-grid{display:grid;grid-template-columns:minmax(420px,1fr) minmax(360px,.82fr);gap:24px;align-items:start}
+    .copy-column{display:grid;gap:24px}
+    .preview-column{position:sticky;top:36px}
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);min-height:360px;overflow:hidden}
     .card-head{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#141416,#111113)}
     .card-title{font-size:15px;font-weight:800}
@@ -89,13 +91,12 @@
     .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .preview{background:#151518;border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
-    .bottom{display:grid;grid-template-columns:1fr;gap:24px;margin-top:24px}
     .log{background:#080809;border:1px solid var(--border);border-radius:var(--radius);min-height:160px;padding:16px;font-family:var(--mono);font-size:12px;color:var(--sub);white-space:pre-wrap;line-height:1.55}
     .status-line{display:flex;gap:8px;flex-wrap:wrap}
     .status-pill{border:1px solid var(--border);background:#151518;border-radius:5px;padding:8px 10px;color:var(--sub);font-family:var(--mono);font-size:11px}
     .status-pill strong{color:var(--text)}
-    @media (max-width:1280px){.cards{grid-template-columns:1fr}}
-    @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{min-height:420px}.main{padding:28px 18px}.cards,.bottom{grid-template-columns:1fr}}
+    @media (max-width:1280px){.production-grid{grid-template-columns:1fr}.preview-column{position:static}}
+    @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{min-height:420px}.main{padding:28px 18px}.production-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -155,42 +156,42 @@
         <p>Generate Chinese news content and WeChat-ready images.</p>
       </header>
 
-      <section class="cards">
-        <article class="card">
-          <div class="card-head">
-            <div class="card-title">Selected Email to Copy</div>
-            <div class="badge">AI Process</div>
-          </div>
-          <div class="card-body stack">
-            <label>Selected News</label>
-            <div class="article-box" id="selectedBox">
-              <p>No email selected. Fetch or select from the sidebar.</p>
+      <section class="production-grid">
+        <div class="copy-column">
+          <article class="card">
+            <div class="card-head">
+              <div class="card-title">Selected Email to Copy</div>
+              <div class="badge">AI Process</div>
             </div>
-            <button class="btn primary" id="generateBtn">Generate Copy + Image</button>
-            <button class="btn" id="copyBtn">Regenerate Copy</button>
-          </div>
-        </article>
+            <div class="card-body stack">
+              <label>Selected News</label>
+              <div class="article-box" id="selectedBox">
+                <p>No email selected. Fetch or select from the sidebar.</p>
+              </div>
+              <button class="btn primary" id="generateBtn">Generate Copy + Image</button>
+              <button class="btn" id="copyBtn">Regenerate Copy</button>
+            </div>
+          </article>
 
-        <article class="card result">
-          <div class="card-head">
-            <div class="card-title">Text to Image</div>
-            <div class="badge">Direct</div>
-          </div>
-          <div class="card-body stack">
-            <label>Generated Article</label>
-            <div class="article-box" id="articleBox">
-              <p>Chinese article will appear here.</p>
+          <article class="card result">
+            <div class="card-head">
+              <div class="card-title">Text to Image</div>
+              <div class="badge">Direct</div>
             </div>
-            <div class="inline-actions">
-              <button class="btn" id="saveBtn">Save Edits</button>
-              <button class="btn primary" id="imageBtn">Generate Image from Edits</button>
+            <div class="card-body stack">
+              <label>Generated Article</label>
+              <div class="article-box" id="articleBox">
+                <p>Chinese article will appear here.</p>
+              </div>
+              <div class="inline-actions">
+                <button class="btn" id="saveBtn">Save Edits</button>
+                <button class="btn primary" id="imageBtn">Generate Image from Edits</button>
+              </div>
             </div>
-          </div>
-        </article>
-      </section>
+          </article>
+        </div>
 
-      <section class="bottom">
-        <article class="card">
+        <article class="card preview-column">
           <div class="card-head">
             <div class="card-title">Image Preview</div>
             <div class="badge">Image Gen</div>
