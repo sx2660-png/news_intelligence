@@ -69,6 +69,12 @@
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);min-height:360px;overflow:hidden}
     .card-head{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#141416,#111113)}
     .card-title{font-size:15px;font-weight:800}
+    details.card > summary.card-head{list-style:none;cursor:pointer}
+    details.card > summary.card-head::-webkit-details-marker{display:none}
+    details.card > summary.card-head .badge::after{content:" +";color:var(--muted)}
+    details.card[open] > summary.card-head .badge::after{content:" -"}
+    details.card:not([open]){min-height:58px}
+    details.card:not([open]) .card-head{border-bottom:0}
     .badge{font-family:var(--mono);font-size:10px;color:var(--muted);background:#151518;border:1px solid #1e1e22;border-radius:4px;padding:4px 7px}
     .card-body{padding:20px}
     label{display:block;color:var(--sub);font-size:12px;margin:0 0 8px}
@@ -158,11 +164,11 @@
 
       <section class="production-grid">
         <div class="copy-column">
-          <article class="card">
-            <div class="card-head">
+          <details class="card">
+            <summary class="card-head">
               <div class="card-title">Selected Email to Copy</div>
               <div class="badge">AI Process</div>
-            </div>
+            </summary>
             <div class="card-body stack">
               <label>Selected News</label>
               <div class="article-box" id="selectedBox">
@@ -171,7 +177,7 @@
               <button class="btn primary" id="generateBtn">Generate Copy + Image</button>
               <button class="btn" id="copyBtn">Regenerate Copy</button>
             </div>
-          </article>
+          </details>
 
           <article class="card result">
             <div class="card-head">
