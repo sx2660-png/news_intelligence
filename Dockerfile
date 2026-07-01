@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fontconfig \
     fonts-liberation \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -37,6 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxkbcommon0 \
     libxrandr2 \
     wget \
+    && (apt-get install -y --no-install-recommends fonts-adobe-source-han-serif-cn || true) \
+    && (apt-get install -y --no-install-recommends fonts-source-han-serif-cn || true) \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

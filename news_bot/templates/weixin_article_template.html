@@ -26,7 +26,7 @@
     color:#222;
     -webkit-font-smoothing:antialiased;
     -moz-osx-font-smoothing:grayscale;
-    font-family:'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', 'SourceHanSerifSC', serif;
+    font-family:'SourceHanSerifSC', 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', serif;
     font-weight:400;
     font-variation-settings:'wght' 400;
     font-synthesis:none;
@@ -50,7 +50,7 @@
 
   .credits{
     position:absolute; right:var(--pad); top:var(--pad);
-    font:10px/1.4 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', 'SourceHanSerifSC', serif;
+    font:10px/1.4 'SourceHanSerifSC', 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', serif;
     color:#7a7a7a;
   }
 
@@ -72,7 +72,7 @@
 
   h1.title{
     margin:0;
-    font-family:'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', 'SourceHanSerifSC', serif;
+    font-family:'SourceHanSerifSC', 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', serif;
     font-weight:500;
     font-variation-settings:'wght' 500;
     font-synthesis:none;
@@ -89,12 +89,12 @@
   .cover img{ width:100%; height:auto; display:block; border-radius:0; }
   .cover figcaption{
     margin-top:6px;
-    font:10px/1.4 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', 'SourceHanSerifSC', serif; color:#666;
+    font:10px/1.4 'SourceHanSerifSC', 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', serif; color:#666;
   }
 
   .content{
     width: var(--column-width);
-    font-family:'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', 'SourceHanSerifSC', serif;
+    font-family:'SourceHanSerifSC', 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', serif;
     font-weight:400;
     font-variation-settings:'wght' 400;
     font-size: var(--body-size);
@@ -112,6 +112,13 @@
     font-variation-settings: inherit;
   }
 
+  h1.title .latin,
+  .content .latin{
+    font-family:inherit;
+    font-variation-settings:inherit;
+    letter-spacing:0;
+  }
+
   .content p{
     margin:0 0 .95em 0;
   }
@@ -126,7 +133,7 @@
       <span class="bar"></span>
       {% if marker_label %}<span class="label">{{ marker_label }}</span>{% endif %}
     </div>
-    <h1 class="title">{{ title }}</h1>
+    <h1 class="title">{{ title_html|safe if title_html is defined else title }}</h1>
   </div>
 
   {% if cover_image %}

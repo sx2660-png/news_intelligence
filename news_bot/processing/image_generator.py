@@ -3,6 +3,7 @@ from __future__ import annotations
 from .wechat_image_style import patch_wechat_template
 
 import base64
+import html
 import os
 import re
 import shutil
@@ -63,7 +64,27 @@ def _to_html(text: str) -> str:
     if not text:
         return ""
     cleaned = re.sub(r"(?<!\n)\n(?!\n)", " ", text.strip())
-    return markdown2.markdown(cleaned)
+    return markdown2.markdown(_wrap_latin_runs(cleaned))
+
+
+_LATIN_RUN_RE = re.compile(
+    r"[A-Za-z0-9]+(?:[ .,'’&/@()#:+\-–][A-Za-z0-9]+)*"
+)
+
+
+def _wrap_latin_runs(text: str) -> str:
+    """Keep Latin text in the same font but remove Chinese tracking."""
+    if not text:
+        return ""
+
+    def repl(match: re.Match) -> str:
+        return f'<span class="latin">{match.group(0)}</span>'
+
+    return _LATIN_RUN_RE.sub(repl, text)
+
+
+def _title_html(title: str) -> str:
+    return _wrap_latin_runs(html.escape(title or ""))
 
 
 def _embed_image_as_data_uri(image_path_or_url: str) -> str:
@@ -171,6 +192,7 @@ def _render_html(
         title_size=title_size,
         body_size=body_size,
         title=title,
+        title_html=_title_html(title),
         body=body_html,
         credits=credits,
         marker_label=marker_label,
