@@ -8,6 +8,20 @@
     font-style:normal;
     font-display:block;
   }
+  @font-face{
+    font-family:'Source Han Serif SC VF';
+    src:url('{{ font_src }}') format('opentype');
+    font-weight:200 900;
+    font-style:normal;
+    font-display:block;
+  }
+  @font-face{
+    font-family:'Source Han Serif SC';
+    src:url('{{ font_src }}') format('opentype');
+    font-weight:200 900;
+    font-style:normal;
+    font-display:block;
+  }
 
   :root{
     --page-width:  {{ page_width|default(540) }}px;
@@ -28,7 +42,7 @@
     -webkit-font-smoothing:antialiased;
     -moz-osx-font-smoothing:grayscale;
 
-    font-family:'SourceHanSerifSC', 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', serif;
+    font-family:'Source Han Serif SC VF', 'SourceHanSerifSC', 'Source Han Serif SC', 'Source Han Serif CN', 'Noto Serif CJK SC', serif;
     font-weight:400;
     font-variation-settings:'wght' 400;
     font-synthesis:none;

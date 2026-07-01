@@ -21,6 +21,7 @@ if [ -f "$FONT_SRC" ]; then
     echo "[fonts] Installed SourceHanSerifSC-VF.otf into $SYSTEM_FONT_DIR"
   fi
   if command -v fc-match >/dev/null 2>&1; then
+    echo "[fonts] fc-match Source Han Serif SC VF: $(fc-match 'Source Han Serif SC VF' || true)"
     echo "[fonts] fc-match Source Han Serif SC: $(fc-match 'Source Han Serif SC' || true)"
     echo "[fonts] fc-match SourceHanSerifSC: $(fc-match 'SourceHanSerifSC' || true)"
   else
