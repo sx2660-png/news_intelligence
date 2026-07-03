@@ -75,7 +75,8 @@
     .email-list{padding:0 14px 18px;overflow:auto;flex:1}
     .email{position:relative;width:100%;border:1px solid transparent;background:transparent;color:var(--sub);text-align:left;border-radius:6px;padding:10px 8px;cursor:pointer;display:block}
     .email:hover,.email.active{background:var(--card-2);border-color:var(--border)}
-    .email-date{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px}
+    .email-date{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+    .new-badge{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.5px;color:#fff;background:var(--blue);border-radius:4px;padding:1px 5px}
     .email-subject{font-size:12px;line-height:1.35;color:var(--text);font-weight:650;padding-right:22px}
     .email-archive{position:absolute;top:8px;right:6px;width:20px;height:20px;border:none;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-size:14px;line-height:1;opacity:0;display:grid;place-items:center}
     .email:hover .email-archive{opacity:1}
@@ -140,6 +141,7 @@
     .date-field label{font-size:10px;color:var(--muted);margin:0 0 4px}
     .date-field select{width:100%;height:34px;background:var(--input);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:0 8px;outline:none;font-size:12px;cursor:pointer}
     .date-field select:hover{border-color:var(--border-2)}
+    .sync-btns{display:grid;gap:8px}
     .sync-meta{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5}
 
     /* Archived list */
@@ -173,6 +175,9 @@
     .progress-toast.open{display:flex}
     .progress-dot{width:9px;height:9px;border:2px solid var(--border-2);border-top-color:var(--blue);border-radius:50%;flex:none;animation:spin .7s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
+    .toast{position:fixed;bottom:20px;left:20px;z-index:95;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--blue);border-radius:8px;padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:12.5px;color:var(--text);opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s;pointer-events:none}
+    .toast.open{opacity:1;transform:translateY(0)}
+    .toast::before{content:"✉";color:var(--blue)}
 
     @media (max-width:1280px){.production-grid{grid-template-columns:1fr}.preview-column{position:static}}
     @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{min-height:420px}.main{padding:28px 18px}.production-grid{grid-template-columns:1fr}}
@@ -209,8 +214,11 @@
               <option value="30">Last 30 days</option>
             </select>
           </div>
-          <button class="btn primary" id="fetchBtn">Sync New Emails</button>
-          <div class="sync-meta" id="syncMeta">Defaults to fetching mail since the last sync.</div>
+          <div class="sync-btns">
+            <button class="btn primary" id="runBtn">Run</button>
+            <button class="btn" id="syncBtn">Sync New Emails</button>
+          </div>
+          <div class="sync-meta" id="syncMeta">Run = fetch + auto-generate latest. Sync = fetch list only.</div>
         </div>
         <details class="side-panel">
           <summary>Pipeline Steps</summary>
@@ -314,12 +322,15 @@
     <span class="progress-dot"></span>
     <span id="loadingText">Working…</span>
   </div>
+  <div class="toast" id="toast"></div>
 
   <script>
     let selectedUid = null;        // uid open in the preview modal
     let emails = [];
     let archived = [];
+    let newUids = new Set();       // uids added by the most recent sync
     let currentArticle = null;
+    let toastTimer = null;
 
     const $ = (id) => document.getElementById(id);
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, ch => ({
@@ -329,7 +340,7 @@
       $("log").textContent = `[${new Date().toLocaleTimeString()}] ${text}\n` + $("log").textContent;
     };
     const setBusy = (busy) => {
-      ["fetchBtn","refreshBtn","saveBtn","imageBtn",
+      ["runBtn","syncBtn","refreshBtn","saveBtn","imageBtn",
        "modalGenerateBtn","modalCopyBtn","modalArchiveBtn"].forEach(id => {
         const el = $(id); if(el) el.disabled = busy;
       });
@@ -344,6 +355,13 @@
     function hideLoading(){
       $("progressBar").classList.remove("open");
       $("progressToast").classList.remove("open");
+    }
+    function showToast(text){
+      const el = $("toast");
+      el.textContent = text;
+      el.classList.add("open");
+      if(toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove("open"), 4000);
     }
 
     // ── Theme ──────────────────────────────────────────────────────────
@@ -377,7 +395,7 @@
       $("relevantCount").textContent = String(emails.length);
       $("emailList").innerHTML = emails.map(email => `
         <div class="email ${String(email.uid) === String(selectedUid) ? "active" : ""}" data-uid="${email.uid}">
-          <div class="email-date">${escapeHtml(email.date)}</div>
+          <div class="email-date">${escapeHtml(email.date)}${newUids.has(String(email.uid)) ? '<span class="new-badge">NEW</span>' : ''}</div>
           <div class="email-subject">${escapeHtml(email.subject)}</div>
           <div class="email-sender">${escapeHtml(email.sender)}</div>
           <button class="email-archive" data-archive="${email.uid}" title="Archive (remove from list)">🗑</button>
@@ -402,6 +420,7 @@
     async function openEmailModal(uid){
       selectedUid = uid;
       $("selectedUid").textContent = uid || "none";
+      newUids.delete(String(uid));   // viewing clears the NEW badge
       renderEmails();
       const summary = emails.find(e => String(e.uid) === String(uid)) || {};
       $("modalSubject").textContent = summary.subject || "(no subject)";
@@ -548,7 +567,8 @@
     $("modalOverlay").addEventListener("click", (e) => { if(e.target === $("modalOverlay")) closeModal(); });
     document.addEventListener("keydown", (e) => { if(e.key === "Escape") closeModal(); });
 
-    $("fetchBtn").addEventListener("click", async () => {
+    // Fetch new mail into the list. Returns the relevant-email array.
+    async function syncEmails(){
       const payload = {};
       const days = parseInt($("rangeDays").value, 10);
       if(days > 0){
@@ -556,23 +576,46 @@
         since.setDate(since.getDate() - days);
         payload.since = since.toISOString().slice(0,10);
       }
-      showLoading("Syncing Gmail…", "Fetching messages in the selected time range");
-      try{
-        log("Syncing Gmail inbox");
-        const data = await api("/api/fetch", {method:"POST", body:JSON.stringify(payload), keepBusy:true});
-        emails = data.relevant || [];
-        $("emailCount").textContent = String(data.emails_count || 0);
-        renderEmails();
-        applySyncDefaults(data.last_fetch);
-        log(`Synced ${data.fetched_count} new messages — ${emails.length} relevant news items`);
+      log("Syncing Gmail inbox");
+      const before = new Set(emails.map(e => String(e.uid)));
+      const data = await api("/api/fetch", {method:"POST", body:JSON.stringify(payload), keepBusy:true});
+      emails = data.relevant || [];
+      $("emailCount").textContent = String(data.emails_count || 0);
 
-        if(!emails.length){
+      // Flag relevant items that weren't in the list before this sync.
+      const fresh = emails.filter(e => !before.has(String(e.uid)));
+      fresh.forEach(e => newUids.add(String(e.uid)));
+      renderEmails();
+      applySyncDefaults(data.last_fetch);
+      log(`Synced ${data.fetched_count} new messages — ${emails.length} relevant news items`);
+      if(fresh.length) showToast(`${fresh.length} new news item${fresh.length > 1 ? "s" : ""}`);
+      return emails;
+    }
+
+    // Sync only — fetch and update the list, no generation.
+    $("syncBtn").addEventListener("click", async () => {
+      showLoading("Syncing Gmail…");
+      try{
+        const list = await syncEmails();
+        if(!list.length) log("No relevant news notices in this window.");
+      } catch(err) {
+        log(`Error: ${err.message}`);
+      } finally {
+        hideLoading();
+        setBusy(false);
+      }
+    });
+
+    // Run — full flow: sync, auto-select latest, generate copy + image.
+    $("runBtn").addEventListener("click", async () => {
+      showLoading("Syncing Gmail…");
+      try{
+        const list = await syncEmails();
+        if(!list.length){
           log("No relevant news notices in this window.");
           return;
         }
-
-        // Auto-select the latest relevant item and generate copy + image.
-        selectedUid = emails[0].uid;
+        selectedUid = list[0].uid;
         $("selectedUid").textContent = selectedUid;
         renderEmails();
         log("Selected latest relevant email");
