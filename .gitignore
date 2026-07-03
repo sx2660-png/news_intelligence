@@ -4,3 +4,4 @@ wechat_images/
 __pycache__/
 *.pyc
 assets/fonts/*.otf
+fetch_state.json

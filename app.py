@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -22,6 +22,11 @@ BASE_DIR = Path(__file__).parent.resolve()
 EMAILS_FILE = BASE_DIR / gmail_scraper.OUTPUT_FILE
 ARTICLES_FILE = BASE_DIR / content_generator.OUTPUT_FILE
 OUTPUT_DIR = BASE_DIR / output_to_images.OUTPUT_DIR
+FETCH_STATE_FILE = BASE_DIR / "fetch_state.json"
+
+# Fallback window (days) used the very first time we fetch, before any
+# last-fetch timestamp has been recorded.
+DEFAULT_FETCH_DAYS = 7
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-news-intelligence-session-key")
@@ -61,6 +66,56 @@ def _write_json(path: Path, data) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _load_fetch_state() -> dict:
+    state = _read_json(FETCH_STATE_FILE, {}) or {}
+    state.setdefault("last_fetch", None)
+    state.setdefault("archived_uids", [])
+    return state
+
+
+def _save_fetch_state(state: dict) -> None:
+    _write_json(FETCH_STATE_FILE, state)
+
+
+def _archived_uids() -> set[str]:
+    return {str(uid) for uid in _load_fetch_state().get("archived_uids", [])}
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _merge_emails(existing: list[dict], fetched: list[dict]) -> list[dict]:
+    """Merge freshly fetched emails into the cached list, keyed by uid.
+
+    Newly fetched versions overwrite older cached copies of the same uid.
+    Archived emails are kept in the cache (soft delete) so they can be
+    restored later; they are simply hidden from the relevant list.
+    """
+    by_uid: dict[str, dict] = {}
+    for email in existing:
+        by_uid[str(email.get("uid"))] = email
+    for email in fetched:
+        by_uid[str(email.get("uid"))] = email
+    return list(by_uid.values())
+
+
+def _archived_emails() -> list[dict]:
+    archived = _archived_uids()
+    emails = _read_json(EMAILS_FILE, [])
+    matched = [e for e in emails if str(e.get("uid")) in archived]
+    matched.sort(key=lambda e: _parse_date(e.get("date", "")), reverse=True)
+    return matched
+
+
 def _parse_date(value: str) -> float:
     if not value:
         return 0.0
@@ -78,7 +133,12 @@ def _parse_date(value: str) -> float:
 
 def _relevant_emails() -> list[dict]:
     emails = _read_json(EMAILS_FILE, [])
-    relevant = [email for email in emails if content_generator.is_relevant(email)]
+    archived = _archived_uids()
+    relevant = [
+        email
+        for email in emails
+        if str(email.get("uid")) not in archived and content_generator.is_relevant(email)
+    ]
     relevant.sort(key=lambda email: _parse_date(email.get("date", "")), reverse=True)
     return relevant
 
@@ -192,22 +252,117 @@ def state():
         {
             "emails_count": len(_read_json(EMAILS_FILE, [])),
             "relevant": [_email_summary(email) for email in _relevant_emails()],
+            "archived": [_email_summary(email) for email in _archived_emails()],
             "current_article": articles[0] if articles else None,
+            "last_fetch": _load_fetch_state().get("last_fetch"),
         }
     )
 
 
 @app.post("/api/fetch")
 def fetch():
+    payload = request.get_json(silent=True) or {}
+    state = _load_fetch_state()
+
+    now = datetime.now(timezone.utc)
+
+    # Resolve the [since, before) window. Day granularity; the client may
+    # override, otherwise we default from the last fetch to now.
+    since = _parse_iso(payload.get("since"))
+    if since is None:
+        since = _parse_iso(state.get("last_fetch"))
+    if since is None:
+        since = now - timedelta(days=DEFAULT_FETCH_DAYS)
+
+    before = _parse_iso(payload.get("before"))
+
     mail = gmail_scraper.connect_gmail()
     try:
-        emails = gmail_scraper.fetch_all_emails(mail)
+        # Add a one-day pad on `before` because IMAP BEFORE is exclusive and
+        # day-granular, so "now" should still include today's mail.
+        fetched = gmail_scraper.fetch_emails(
+            mail,
+            since=since,
+            before=(before + timedelta(days=1)) if before else None,
+        )
     finally:
         mail.logout()
 
-    _write_json(EMAILS_FILE, emails)
+    existing = _read_json(EMAILS_FILE, [])
+    merged = _merge_emails(existing, fetched)
+    _write_json(EMAILS_FILE, merged)
+
+    state["last_fetch"] = now.isoformat()
+    _save_fetch_state(state)
+
     relevant = [_email_summary(email) for email in _relevant_emails()]
-    return jsonify({"emails_count": len(emails), "relevant": relevant})
+    return jsonify(
+        {
+            "emails_count": len(merged),
+            "fetched_count": len(fetched),
+            "relevant": relevant,
+            "last_fetch": state["last_fetch"],
+        }
+    )
+
+
+@app.get("/api/email/<uid>")
+def email_detail(uid: str):
+    email = _find_email(uid)
+    if not email:
+        return jsonify({"error": "Email not found"}), 404
+    return jsonify(
+        {
+            "uid": email.get("uid", ""),
+            "date": email.get("date", ""),
+            "subject": email.get("subject", ""),
+            "sender": email.get("sender", ""),
+            "body": email.get("body", ""),
+        }
+    )
+
+
+def _archive_response() -> dict:
+    return {
+        "emails_count": len(_read_json(EMAILS_FILE, [])),
+        "relevant": [_email_summary(email) for email in _relevant_emails()],
+        "archived": [_email_summary(email) for email in _archived_emails()],
+    }
+
+
+@app.post("/api/archive")
+def archive_email():
+    """Soft-delete: flag the uid as archived. The email data is kept so it
+    can be restored later."""
+    payload = request.get_json(silent=True) or {}
+    uid = str(payload.get("uid") or "").strip()
+    if not uid:
+        return jsonify({"error": "uid is required"}), 400
+
+    state = _load_fetch_state()
+    archived = {str(u) for u in state.get("archived_uids", [])}
+    archived.add(uid)
+    state["archived_uids"] = sorted(archived)
+    _save_fetch_state(state)
+
+    return jsonify(_archive_response())
+
+
+@app.post("/api/restore")
+def restore_email():
+    """Undo a soft delete: remove the uid from the archived set."""
+    payload = request.get_json(silent=True) or {}
+    uid = str(payload.get("uid") or "").strip()
+    if not uid:
+        return jsonify({"error": "uid is required"}), 400
+
+    state = _load_fetch_state()
+    archived = {str(u) for u in state.get("archived_uids", [])}
+    archived.discard(uid)
+    state["archived_uids"] = sorted(archived)
+    _save_fetch_state(state)
+
+    return jsonify(_archive_response())
 
 
 @app.post("/api/generate")

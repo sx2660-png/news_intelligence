@@ -122,11 +122,38 @@ def connect_gmail() -> imaplib.IMAP4_SSL:
     return mail
 
 
-def fetch_all_emails(mail: imaplib.IMAP4_SSL, mailbox: str = "INBOX") -> list[dict]:
+def _imap_date(dt: datetime) -> str:
+    """Format a datetime as an IMAP search date (e.g. 03-Jul-2026)."""
+    return dt.strftime("%d-%b-%Y")
+
+
+def _build_search_criteria(since: datetime | None, before: datetime | None) -> list[str]:
+    """Build IMAP SEARCH criteria for an optional [since, before) date window."""
+    criteria: list[str] = []
+    if since is not None:
+        criteria += ["SINCE", _imap_date(since)]
+    if before is not None:
+        criteria += ["BEFORE", _imap_date(before)]
+    if not criteria:
+        criteria = ["ALL"]
+    return criteria
+
+
+def fetch_emails(
+    mail: imaplib.IMAP4_SSL,
+    mailbox: str = "INBOX",
+    since: datetime | None = None,
+    before: datetime | None = None,
+) -> list[dict]:
     """
-    Fetch all emails from the specified mailbox folder.
-    Each item in the returned list contains:
-        - uid        unique message ID
+    Fetch emails from the mailbox, optionally limited to a date window.
+
+    Args:
+        since:  only fetch messages received on/after this date (day granularity).
+        before: only fetch messages received strictly before this date.
+
+    Each returned item contains:
+        - uid        stable IMAP UID (string)
         - date       sent date (ISO 8601 string)
         - subject    email subject
         - sender     From address
@@ -134,21 +161,22 @@ def fetch_all_emails(mail: imaplib.IMAP4_SSL, mailbox: str = "INBOX") -> list[di
     """
     mail.select(mailbox, readonly=True)
 
-    # Search for all messages
-    status, data = mail.search(None, "ALL")
+    criteria = _build_search_criteria(since, before)
+    status, data = mail.uid("search", None, *criteria)
     if status != "OK":
         print("[!] Failed to search emails")
         return []
 
     email_ids = data[0].split()
     total = len(email_ids)
-    print(f"[i] Found {total} emails. Starting fetch...")
+    window = " ".join(criteria)
+    print(f"[i] Found {total} emails ({window}). Starting fetch...")
 
     results = []
     for idx, eid in enumerate(email_ids, 1):
         try:
-            status, msg_data = mail.fetch(eid, "(RFC822)")
-            if status != "OK":
+            status, msg_data = mail.uid("fetch", eid, "(RFC822)")
+            if status != "OK" or not msg_data or msg_data[0] is None:
                 continue
 
             raw = msg_data[0][1]
@@ -182,6 +210,11 @@ def fetch_all_emails(mail: imaplib.IMAP4_SSL, mailbox: str = "INBOX") -> list[di
             continue
 
     return results
+
+
+def fetch_all_emails(mail: imaplib.IMAP4_SSL, mailbox: str = "INBOX") -> list[dict]:
+    """Backwards-compatible wrapper: fetch every email in the mailbox."""
+    return fetch_emails(mail, mailbox=mailbox)
 
 
 def save_results(results: list[dict], path: str = OUTPUT_FILE) -> None:

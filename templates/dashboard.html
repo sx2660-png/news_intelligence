@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,8 +8,10 @@
     :root{
       --bg:#0b0b0c;
       --side:#111113;
+      --side-border:#1e1e22;
       --card:#121214;
       --card-2:#18181b;
+      --card-head:#141416;
       --input:#171719;
       --border:#27272b;
       --border-2:#323238;
@@ -21,42 +23,63 @@
       --purple:#57068c;
       --ok:#22c55e;
       --bad:#ef4444;
+      --panel:#161618;
+      --overlay:rgba(0,0,0,.66);
       --radius:8px;
       --mono:"SFMono-Regular","Menlo","Consolas",monospace;
       --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
     }
+    [data-theme="light"]{
+      --bg:#f4f5f7;
+      --side:#ffffff;
+      --side-border:#e4e4e8;
+      --card:#ffffff;
+      --card-2:#f7f7f9;
+      --card-head:#fbfbfc;
+      --input:#ffffff;
+      --border:#e0e0e5;
+      --border-2:#cfcfd6;
+      --text:#18181b;
+      --sub:#52525b;
+      --muted:#8a8a94;
+      --panel:#f2f2f5;
+      --overlay:rgba(20,20,25,.4);
+    }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;transition:background .2s,color .2s}
     button,select,input,textarea{font:inherit}
     .app{display:grid;grid-template-columns:320px 1fr;min-height:100vh}
-    .sidebar{background:var(--side);border-right:1px solid #1e1e22;display:flex;flex-direction:column}
-    .brand{padding:28px 20px 22px;border-bottom:1px solid #1f1f23}
+    .sidebar{background:var(--side);border-right:1px solid var(--side-border);display:flex;flex-direction:column}
+    .brand{padding:28px 20px 22px;border-bottom:1px solid var(--side-border)}
     .brand-title{font-size:19px;font-weight:800;letter-spacing:.1px}
     .brand-title span{font-size:13px;color:var(--muted);font-weight:500;margin-left:8px}
-    .user{margin-top:20px;background:linear-gradient(180deg,#18181b,#141416);border:1px solid var(--border);border-radius:4px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
+    .user{margin-top:20px;background:var(--card-2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
     .user-left{display:flex;align-items:center;gap:10px;min-width:0}
     .avatar{width:34px;height:34px;border-radius:7px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:grid;place-items:center;font-weight:800}
     .user-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .role{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px}
-    .ghost{height:30px;border:1px solid var(--border);background:#0d0d0f;color:var(--sub);border-radius:5px;padding:0 10px;cursor:pointer}
+    .ghost{height:30px;border:1px solid var(--border);background:var(--input);color:var(--sub);border-radius:5px;padding:0 10px;cursor:pointer}
     .side-actions{display:grid;gap:10px;margin-top:14px}
-    .side-panel{margin-top:14px;background:#161618;border:1px solid #222226;border-radius:4px;color:var(--sub);line-height:1.65;font-size:13px;overflow:hidden}
+    .side-panel{margin-top:14px;background:var(--panel);border:1px solid var(--border);border-radius:4px;color:var(--sub);line-height:1.65;font-size:13px;overflow:hidden}
     .side-panel summary{list-style:none;cursor:pointer;padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between}
     .side-panel summary::-webkit-details-marker{display:none}
     .side-panel summary::after{content:"+";font-size:13px;color:var(--muted)}
-    .side-panel[open] summary{border-bottom:1px solid #222226}
+    .side-panel[open] summary{border-bottom:1px solid var(--border)}
     .side-panel[open] summary::after{content:"-"}
     .side-panel-body{padding:12px 14px}
     .task-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 10px}
     .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
     .tabs{display:flex;gap:4px}
-    .tab{font-family:var(--mono);font-size:10px;height:23px;border:1px solid var(--border);background:#151518;color:var(--muted);border-radius:4px;padding:0 8px}
+    .tab{font-family:var(--mono);font-size:10px;height:23px;border:1px solid var(--border);background:var(--panel);color:var(--muted);border-radius:4px;padding:0 8px}
     .tab.active{background:var(--blue);border-color:var(--blue);color:white}
     .email-list{padding:0 14px 18px;overflow:auto;flex:1}
-    .email{width:100%;border:1px solid transparent;background:transparent;color:var(--sub);text-align:left;border-radius:6px;padding:10px 8px;cursor:pointer}
-    .email:hover,.email.active{background:#171719;border-color:var(--border)}
+    .email{position:relative;width:100%;border:1px solid transparent;background:transparent;color:var(--sub);text-align:left;border-radius:6px;padding:10px 8px;cursor:pointer;display:block}
+    .email:hover,.email.active{background:var(--card-2);border-color:var(--border)}
     .email-date{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px}
-    .email-subject{font-size:12px;line-height:1.35;color:#d7d7dc;font-weight:650}
+    .email-subject{font-size:12px;line-height:1.35;color:var(--text);font-weight:650;padding-right:22px}
+    .email-archive{position:absolute;top:8px;right:6px;width:20px;height:20px;border:none;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-size:14px;line-height:1;opacity:0;display:grid;place-items:center}
+    .email:hover .email-archive{opacity:1}
+    .email-archive:hover{background:var(--bad);color:#fff}
     .email-sender{font-size:11px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .empty-side{color:var(--muted);line-height:1.6;text-align:center;padding:44px 26px;font-size:13px}
     .main{padding:36px 40px 46px;overflow:auto}
@@ -67,7 +90,7 @@
     .copy-column{display:grid;gap:24px}
     .preview-column{position:sticky;top:36px}
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);min-height:360px;overflow:hidden}
-    .card-head{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#141416,#111113)}
+    .card-head{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border);background:var(--card-head)}
     .card-title{font-size:15px;font-weight:800}
     details.card > summary.card-head{list-style:none;cursor:pointer}
     details.card > summary.card-head::-webkit-details-marker{display:none}
@@ -75,32 +98,82 @@
     details.card[open] > summary.card-head .badge::after{content:" -"}
     details.card:not([open]){min-height:58px}
     details.card:not([open]) .card-head{border-bottom:0}
-    .badge{font-family:var(--mono);font-size:10px;color:var(--muted);background:#151518;border:1px solid #1e1e22;border-radius:4px;padding:4px 7px}
+    .badge{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:4px 7px}
     .card-body{padding:20px}
     label{display:block;color:var(--sub);font-size:12px;margin:0 0 8px}
     .field{width:100%;height:40px;background:var(--input);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:0 12px;outline:none}
     textarea.field{height:150px;resize:vertical;padding:12px;line-height:1.55}
-    .steps{margin:16px 0 32px;background:#161618;border:1px solid #222226;border-radius:4px;padding:14px 14px;color:var(--sub);line-height:1.55;font-size:12px}
+    .steps{margin:16px 0 32px;background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:14px 14px;color:var(--sub);line-height:1.55;font-size:12px}
     .steps-title{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
-    .btn{width:100%;height:39px;border:1px solid var(--border);background:#171719;color:var(--text);border-radius:5px;cursor:pointer;font-weight:700}
-    .btn:hover{border-color:var(--border-2);background:#1d1d20}
+    .btn{width:100%;height:39px;border:1px solid var(--border);background:var(--card-2);color:var(--text);border-radius:5px;cursor:pointer;font-weight:700}
+    .btn:hover{border-color:var(--border-2);background:var(--input)}
+    .btn.danger{color:var(--bad);border-color:var(--border)}
+    .btn.danger:hover{background:var(--bad);border-color:var(--bad);color:#fff}
     .btn.primary{background:var(--blue);border-color:var(--blue);color:white}
     .btn.primary:hover{background:var(--blue-2)}
     .btn:disabled{opacity:.55;cursor:not-allowed}
     .hint{color:var(--muted);font-size:11px;text-align:center;margin-top:13px}
     .stack{display:grid;gap:14px}
-    .article-box{background:#151518;border:1px solid var(--border);border-radius:5px;padding:14px;min-height:210px}
+    .article-box{background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:14px;min-height:210px}
     .article-box h2{margin:0 0 12px;font-size:18px;line-height:1.35}
-    .article-box p{margin:0;color:#d6d6dc;line-height:1.7;white-space:pre-wrap}
+    .article-box p{margin:0;color:var(--sub);line-height:1.7;white-space:pre-wrap}
+    .editor-empty{margin:0;color:var(--muted);padding:8px 2px}
     .editor-title{height:auto;min-height:48px;font-size:22px;font-weight:800;line-height:1.25;padding:12px 14px}
     .editor-body{min-height:360px;font-size:16px;line-height:1.75}
     .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .preview{background:#151518;border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
+    .preview{background:var(--panel);border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
-    .log{background:#080809;border:1px solid var(--border);border-radius:var(--radius);min-height:160px;padding:16px;font-family:var(--mono);font-size:12px;color:var(--sub);white-space:pre-wrap;line-height:1.55}
+    .log{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);min-height:160px;padding:16px;font-family:var(--mono);font-size:12px;color:var(--sub);white-space:pre-wrap;line-height:1.55}
     .status-line{display:flex;gap:8px;flex-wrap:wrap}
-    .status-pill{border:1px solid var(--border);background:#151518;border-radius:5px;padding:8px 10px;color:var(--sub);font-family:var(--mono);font-size:11px}
+    .status-pill{border:1px solid var(--border);background:var(--panel);border-radius:5px;padding:8px 10px;color:var(--sub);font-family:var(--mono);font-size:11px}
     .status-pill strong{color:var(--text)}
+
+    /* Header actions row (theme toggle + refresh) */
+    .brand-actions{display:flex;align-items:center;gap:8px}
+    .icon-btn{height:30px;width:34px;border:1px solid var(--border);background:var(--input);color:var(--sub);border-radius:5px;cursor:pointer;display:grid;place-items:center;font-size:14px;padding:0}
+    .icon-btn:hover{border-color:var(--border-2);color:var(--text)}
+
+    /* Fetch (sync) controls */
+    .sync-panel{margin-top:14px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px}
+    .sync-title{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+    .date-field{margin-bottom:10px}
+    .date-field label{font-size:10px;color:var(--muted);margin:0 0 4px}
+    .date-field select{width:100%;height:34px;background:var(--input);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:0 8px;outline:none;font-size:12px;cursor:pointer}
+    .date-field select:hover{border-color:var(--border-2)}
+    .sync-meta{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5}
+
+    /* Archived list */
+    .panel-count{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--input);border:1px solid var(--border);border-radius:10px;padding:1px 7px;margin-left:6px}
+    .archived-list{display:grid;gap:8px}
+    .archived-item{border:1px solid var(--border);background:var(--input);border-radius:6px;padding:8px 10px}
+    .archived-subject{font-size:12px;color:var(--sub);line-height:1.35;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .archived-restore{height:26px;border:1px solid var(--border);background:transparent;color:var(--blue);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:0 10px}
+    .archived-restore:hover{background:var(--blue);border-color:var(--blue);color:#fff}
+    .archived-empty{color:var(--muted);font-size:11px}
+
+    /* Modal / floating email preview */
+    .modal-overlay{position:fixed;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;z-index:50;padding:24px;backdrop-filter:blur(2px)}
+    .modal-overlay.open{display:flex}
+    .modal{background:var(--card);border:1px solid var(--border-2);border-radius:10px;width:min(720px,100%);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+    .modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 14px;border-bottom:1px solid var(--border)}
+    .modal-head h2{margin:0;font-size:18px;line-height:1.35}
+    .modal-meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;word-break:break-word}
+    .modal-close{flex:none;width:30px;height:30px;border:1px solid var(--border);background:var(--input);color:var(--sub);border-radius:6px;cursor:pointer;font-size:16px;line-height:1}
+    .modal-close:hover{color:var(--text);border-color:var(--border-2)}
+    .modal-body{padding:18px 22px;overflow:auto;white-space:pre-wrap;line-height:1.7;color:var(--sub);font-size:13.5px;flex:1}
+    .modal-actions{display:grid;grid-template-columns:1.4fr 1fr auto;gap:10px;padding:16px 22px 20px;border-top:1px solid var(--border)}
+    .modal-actions .btn{width:auto}
+
+    /* Slim top progress bar + small status toast */
+    .progress-bar{position:fixed;top:0;left:0;right:0;height:3px;background:transparent;z-index:90;overflow:hidden;opacity:0;transition:opacity .2s}
+    .progress-bar.open{opacity:1}
+    .progress-bar::before{content:"";position:absolute;height:100%;width:40%;background:var(--blue);border-radius:3px;animation:indeterminate 1.1s ease-in-out infinite}
+    @keyframes indeterminate{0%{left:-40%}100%{left:100%}}
+    .progress-toast{position:fixed;bottom:20px;right:20px;z-index:90;display:none;align-items:center;gap:9px;background:var(--card);border:1px solid var(--border-2);border-radius:8px;padding:9px 14px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:12.5px;color:var(--text);max-width:280px}
+    .progress-toast.open{display:flex}
+    .progress-dot{width:9px;height:9px;border:2px solid var(--border-2);border-top-color:var(--blue);border-radius:50%;flex:none;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
     @media (max-width:1280px){.production-grid{grid-template-columns:1fr}.preview-column{position:static}}
     @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{min-height:420px}.main{padding:28px 18px}.production-grid{grid-template-columns:1fr}}
   </style>
@@ -118,19 +191,41 @@
               <div class="role">WORKER</div>
             </div>
           </div>
-          <button class="ghost" id="refreshBtn">Refresh</button>
+          <div class="brand-actions">
+            <button class="icon-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
+            <button class="ghost" id="refreshBtn">Refresh</button>
+          </div>
         </div>
-        <div class="side-actions">
-          <button class="btn primary" id="fetchBtn">Fetch Gmail</button>
+        <div class="sync-panel">
+          <div class="sync-title">Sync inbox → news list</div>
+          <div class="date-field">
+            <label for="rangeDays">Time range</label>
+            <select id="rangeDays">
+              <option value="">Since last sync</option>
+              <option value="1">Last 1 day</option>
+              <option value="3">Last 3 days</option>
+              <option value="7">Last 7 days</option>
+              <option value="14">Last 14 days</option>
+              <option value="30">Last 30 days</option>
+            </select>
+          </div>
+          <button class="btn primary" id="fetchBtn">Sync New Emails</button>
+          <div class="sync-meta" id="syncMeta">Defaults to fetching mail since the last sync.</div>
         </div>
         <details class="side-panel">
           <summary>Pipeline Steps</summary>
           <div class="side-panel-body">
-            <div>1. Fetch emails from Gmail</div>
+            <div>1. Sync new mail from Gmail (by date range)</div>
             <div>2. Filter relevant news notices</div>
-            <div>3. Select the latest or clicked item</div>
+            <div>3. Click an item to preview it</div>
             <div>4. Generate Chinese copy</div>
             <div>5. Render WeChat image</div>
+          </div>
+        </details>
+        <details class="side-panel" id="archivedPanel">
+          <summary>Archived <span id="archivedCount" class="panel-count">0</span></summary>
+          <div class="side-panel-body">
+            <div id="archivedList" class="archived-list"></div>
           </div>
         </details>
         <details class="side-panel">
@@ -164,30 +259,14 @@
 
       <section class="production-grid">
         <div class="copy-column">
-          <details class="card">
-            <summary class="card-head">
-              <div class="card-title">Selected Email to Copy</div>
-              <div class="badge">AI Process</div>
-            </summary>
-            <div class="card-body stack">
-              <label>Selected News</label>
-              <div class="article-box" id="selectedBox">
-                <p>No email selected. Fetch or select from the sidebar.</p>
-              </div>
-              <button class="btn primary" id="generateBtn">Generate Copy + Image</button>
-              <button class="btn" id="copyBtn">Regenerate Copy</button>
-            </div>
-          </details>
-
           <article class="card result">
             <div class="card-head">
               <div class="card-title">Text to Image</div>
               <div class="badge">Direct</div>
             </div>
             <div class="card-body stack">
-              <label>Generated Article</label>
-              <div class="article-box" id="articleBox">
-                <p>Chinese article will appear here.</p>
+              <div id="articleBox">
+                <p class="editor-empty">Chinese article will appear here.</p>
               </div>
               <div class="inline-actions">
                 <button class="btn" id="saveBtn">Save Edits</button>
@@ -210,9 +289,36 @@
     </main>
   </div>
 
+  <!-- Floating email preview -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <div>
+          <h2 id="modalSubject">Subject</h2>
+          <div class="modal-meta" id="modalMeta"></div>
+        </div>
+        <button class="modal-close" id="modalClose" title="Close">×</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="modalGenerateBtn">Generate Copy + Image</button>
+        <button class="btn" id="modalCopyBtn">Regenerate Copy</button>
+        <button class="btn danger" id="modalArchiveBtn">Archive</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fetch / processing progress indicator -->
+  <div class="progress-bar" id="progressBar"></div>
+  <div class="progress-toast" id="progressToast">
+    <span class="progress-dot"></span>
+    <span id="loadingText">Working…</span>
+  </div>
+
   <script>
-    let selectedUid = null;
+    let selectedUid = null;        // uid open in the preview modal
     let emails = [];
+    let archived = [];
     let currentArticle = null;
 
     const $ = (id) => document.getElementById(id);
@@ -223,8 +329,35 @@
       $("log").textContent = `[${new Date().toLocaleTimeString()}] ${text}\n` + $("log").textContent;
     };
     const setBusy = (busy) => {
-      ["fetchBtn","refreshBtn","generateBtn","copyBtn","saveBtn","imageBtn"].forEach(id => $(id).disabled = busy);
+      ["fetchBtn","refreshBtn","saveBtn","imageBtn",
+       "modalGenerateBtn","modalCopyBtn","modalArchiveBtn"].forEach(id => {
+        const el = $(id); if(el) el.disabled = busy;
+      });
     };
+
+    // ── Progress indicator (slim top bar + status toast) ───────────────
+    function showLoading(text){
+      $("loadingText").textContent = text || "Working…";
+      $("progressBar").classList.add("open");
+      $("progressToast").classList.add("open");
+    }
+    function hideLoading(){
+      $("progressBar").classList.remove("open");
+      $("progressToast").classList.remove("open");
+    }
+
+    // ── Theme ──────────────────────────────────────────────────────────
+    function applyTheme(theme){
+      const light = theme === "light";
+      document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+      $("themeBtn").textContent = light ? "☀️" : "🌙";
+    }
+    function toggleTheme(){
+      const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+      localStorage.setItem("theme", next);
+      applyTheme(next);
+    }
+    applyTheme(localStorage.getItem("theme") || "dark");
 
     async function api(path, options = {}){
       const {keepBusy = false, ...fetchOptions} = options;
@@ -239,68 +372,74 @@
       }
     }
 
-    function selectedEmail(){
-      return emails.find(email => String(email.uid) === String(selectedUid));
-    }
-
+    // ── Email list ─────────────────────────────────────────────────────
     function renderEmails(){
       $("relevantCount").textContent = String(emails.length);
       $("emailList").innerHTML = emails.map(email => `
-        <button class="email ${String(email.uid) === String(selectedUid) ? "active" : ""}" data-uid="${email.uid}">
+        <div class="email ${String(email.uid) === String(selectedUid) ? "active" : ""}" data-uid="${email.uid}">
           <div class="email-date">${escapeHtml(email.date)}</div>
           <div class="email-subject">${escapeHtml(email.subject)}</div>
           <div class="email-sender">${escapeHtml(email.sender)}</div>
-        </button>
-      `).join("") || `<div class="empty-side">No tasks yet. Start by fetching inbox content.</div>`;
-      document.querySelectorAll(".email").forEach(btn => {
-        btn.addEventListener("click", () => {
-          selectedUid = btn.dataset.uid;
-          renderEmails();
-          renderSelected();
+          <button class="email-archive" data-archive="${email.uid}" title="Archive (remove from list)">🗑</button>
+        </div>
+      `).join("") || `<div class="empty-side">No news yet. Sync your inbox to get started.</div>`;
+
+      document.querySelectorAll(".email").forEach(row => {
+        row.addEventListener("click", (e) => {
+          if(e.target.closest(".email-archive")) return;
+          openEmailModal(row.dataset.uid);
+        });
+      });
+      document.querySelectorAll(".email-archive").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          archiveEmail(btn.dataset.archive);
         });
       });
     }
 
-    function renderSelected(){
-      const email = selectedEmail();
-      $("selectedUid").textContent = selectedUid || "none";
-      if(!email){
-        $("selectedBox").innerHTML = `<p>No email selected. Fetch or select from the sidebar.</p>`;
-        return;
+    // ── Floating preview modal ─────────────────────────────────────────
+    async function openEmailModal(uid){
+      selectedUid = uid;
+      $("selectedUid").textContent = uid || "none";
+      renderEmails();
+      const summary = emails.find(e => String(e.uid) === String(uid)) || {};
+      $("modalSubject").textContent = summary.subject || "(no subject)";
+      $("modalMeta").innerHTML = `${escapeHtml(summary.sender || "")}<br>${escapeHtml(summary.date || "")}`;
+      $("modalBody").textContent = "Loading full message…";
+      $("modalOverlay").classList.add("open");
+      try{
+        const data = await api(`/api/email/${encodeURIComponent(uid)}`, {method:"GET"});
+        $("modalSubject").textContent = data.subject || "(no subject)";
+        $("modalMeta").innerHTML = `${escapeHtml(data.sender || "")}<br>${escapeHtml(data.date || "")}`;
+        $("modalBody").textContent = data.body || "(empty message)";
+      } catch(err){
+        $("modalBody").textContent = `Could not load message: ${err.message}`;
       }
-      $("selectedBox").innerHTML = `
-        <h2>${escapeHtml(email.subject)}</h2>
-        <p>${escapeHtml(email.sender)}\n${escapeHtml(email.date)}\n\n${escapeHtml(email.preview)}</p>
-      `;
     }
+    function closeModal(){ $("modalOverlay").classList.remove("open"); }
 
+    // ── Article editor ─────────────────────────────────────────────────
     function renderArticle(article){
       if(!article){
-        $("articleBox").innerHTML = `<p>Chinese article will appear here.</p>`;
+        $("articleBox").innerHTML = `<p class="editor-empty">Chinese article will appear here.</p>`;
         currentArticle = null;
         return;
       }
       currentArticle = article;
-      selectedUid = article.uid;
-      $("selectedUid").textContent = article.uid;
       $("articleBox").innerHTML = `
         <label for="articleTitle">Title</label>
         <textarea class="field editor-title" id="articleTitle">${escapeHtml(article.title)}</textarea>
         <label for="articleBody" style="margin-top:14px">Content</label>
         <textarea class="field editor-body" id="articleBody">${escapeHtml(article.body)}</textarea>
       `;
-      renderEmails();
-      renderSelected();
     }
 
     function editedArticlePayload(){
       const titleEl = $("articleTitle");
       const bodyEl = $("articleBody");
       if(!titleEl || !bodyEl) throw new Error("No generated article to edit");
-      return {
-        title: titleEl.value.trim(),
-        body: bodyEl.value.trim()
-      };
+      return { title: titleEl.value.trim(), body: bodyEl.value.trim() };
     }
 
     async function saveEdits(){
@@ -316,16 +455,22 @@
 
     async function generateCopyAndImage(uid){
       if(!uid) throw new Error("No email selected");
-      log("Generating Chinese copy");
-      log("Rendering WeChat image");
-      const data = await api("/api/generate", {
-        method:"POST",
-        body:JSON.stringify({uid})
-      });
-      renderArticle(data.article);
-      renderImage(data.image);
-      log("Copy and image generated");
-      return data;
+      showLoading("Generating Chinese copy + image", "This can take a moment…");
+      log("Generating Chinese copy and rendering WeChat image");
+      try{
+        const data = await api("/api/generate", {
+          method:"POST",
+          body:JSON.stringify({uid}),
+          keepBusy:true
+        });
+        renderArticle(data.article);
+        renderImage(data.image);
+        log("Copy and image generated");
+        return data;
+      } finally {
+        hideLoading();
+        setBusy(false);
+      }
     }
 
     function renderImage(image){
@@ -336,76 +481,144 @@
       $("preview").innerHTML = `<img src="/api/image?path=${encodeURIComponent(image.image_path)}&t=${Date.now()}" alt="Generated WeChat image">`;
     }
 
+    // ── Archive / restore (soft delete) ────────────────────────────────
+    function renderArchived(){
+      $("archivedCount").textContent = String(archived.length);
+      $("archivedList").innerHTML = archived.map(email => `
+        <div class="archived-item">
+          <div class="archived-subject">${escapeHtml(email.subject)}</div>
+          <button class="archived-restore" data-restore="${email.uid}">↩ Restore</button>
+        </div>
+      `).join("") || `<div class="archived-empty">Nothing archived.</div>`;
+      document.querySelectorAll(".archived-restore").forEach(btn => {
+        btn.addEventListener("click", () => restoreEmail(btn.dataset.restore));
+      });
+    }
+
+    function applyArchiveData(data){
+      emails = data.relevant || [];
+      archived = data.archived || [];
+      $("emailCount").textContent = String(data.emails_count || 0);
+      renderEmails();
+      renderArchived();
+    }
+
+    async function archiveEmail(uid){
+      if(!uid) return;
+      log(`Archiving ${uid}`);
+      const data = await api("/api/archive", {method:"POST", body:JSON.stringify({uid})});
+      if(String(selectedUid) === String(uid)){ selectedUid = null; closeModal(); }
+      applyArchiveData(data);
+      log("Email archived (recoverable from the Archived panel)");
+    }
+
+    async function restoreEmail(uid){
+      if(!uid) return;
+      log(`Restoring ${uid}`);
+      const data = await api("/api/restore", {method:"POST", body:JSON.stringify({uid})});
+      applyArchiveData(data);
+      log("Email restored");
+    }
+
+    // ── Sync range helper ──────────────────────────────────────────────
+    function applySyncDefaults(lastFetch){
+      $("syncMeta").textContent = lastFetch
+        ? `Last sync: ${new Date(lastFetch).toLocaleString()}`
+        : "No previous sync — defaults to the last 7 days.";
+    }
+
+    // ── State load ─────────────────────────────────────────────────────
     async function loadState(){
       log("Loading workspace");
       const data = await api("/api/state", {method:"GET"});
       emails = data.relevant || [];
+      archived = data.archived || [];
       $("emailCount").textContent = String(data.emails_count || 0);
-      if(!selectedUid && emails[0]) selectedUid = emails[0].uid;
       renderEmails();
-      renderSelected();
+      renderArchived();
       renderArticle(data.current_article);
+      applySyncDefaults(data.last_fetch);
       log(`Loaded ${emails.length} relevant emails`);
     }
 
+    // ── Events ─────────────────────────────────────────────────────────
+    $("themeBtn").addEventListener("click", toggleTheme);
+    $("refreshBtn").addEventListener("click", loadState);
+    $("modalClose").addEventListener("click", closeModal);
+    $("modalOverlay").addEventListener("click", (e) => { if(e.target === $("modalOverlay")) closeModal(); });
+    document.addEventListener("keydown", (e) => { if(e.key === "Escape") closeModal(); });
+
     $("fetchBtn").addEventListener("click", async () => {
+      const payload = {};
+      const days = parseInt($("rangeDays").value, 10);
+      if(days > 0){
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+        payload.since = since.toISOString().slice(0,10);
+      }
+      showLoading("Syncing Gmail…", "Fetching messages in the selected time range");
       try{
-        log("Fetching Gmail inbox");
-        const data = await api("/api/fetch", {method:"POST", body:"{}", keepBusy:true});
+        log("Syncing Gmail inbox");
+        const data = await api("/api/fetch", {method:"POST", body:JSON.stringify(payload), keepBusy:true});
         emails = data.relevant || [];
         $("emailCount").textContent = String(data.emails_count || 0);
-        selectedUid = emails[0] ? emails[0].uid : null;
         renderEmails();
-        renderSelected();
-        log(`Fetched ${data.emails_count} emails`);
+        applySyncDefaults(data.last_fetch);
+        log(`Synced ${data.fetched_count} new messages — ${emails.length} relevant news items`);
 
-        if(!selectedUid){
-          renderArticle(null);
-          renderImage(null);
-          log("No relevant news notices found. Pipeline stopped.");
+        if(!emails.length){
+          log("No relevant news notices in this window.");
           return;
         }
 
+        // Auto-select the latest relevant item and generate copy + image.
+        selectedUid = emails[0].uid;
+        $("selectedUid").textContent = selectedUid;
+        renderEmails();
         log("Selected latest relevant email");
         await generateCopyAndImage(selectedUid);
       } catch(err) {
         log(`Error: ${err.message}`);
       } finally {
+        hideLoading();
         setBusy(false);
       }
     });
-    $("refreshBtn").addEventListener("click", loadState);
-    $("generateBtn").addEventListener("click", async () => {
+
+    $("modalGenerateBtn").addEventListener("click", async () => {
       try{
-        await generateCopyAndImage(selectedUid);
-      } catch(err) {
-        log(`Error: ${err.message}`);
-      }
+        const uid = selectedUid;
+        closeModal();
+        await generateCopyAndImage(uid);
+      } catch(err) { hideLoading(); log(`Error: ${err.message}`); }
     });
-    $("copyBtn").addEventListener("click", async () => {
-      log("Regenerating copy");
-      const data = await api("/api/regenerate-copy", {method:"POST", body:JSON.stringify({uid:selectedUid})});
-      renderArticle(data.article);
-      log("Copy regenerated");
+    $("modalCopyBtn").addEventListener("click", async () => {
+      try{
+        showLoading("Regenerating copy…", "");
+        log("Regenerating copy");
+        const data = await api("/api/regenerate-copy", {method:"POST", body:JSON.stringify({uid:selectedUid}), keepBusy:true});
+        renderArticle(data.article);
+        log("Copy regenerated");
+      } catch(err) { log(`Error: ${err.message}`); }
+      finally { hideLoading(); setBusy(false); }
     });
+    $("modalArchiveBtn").addEventListener("click", () => archiveEmail(selectedUid));
+
     $("saveBtn").addEventListener("click", async () => {
-      try{
-        await saveEdits();
-      } catch(err) {
-        log(`Error: ${err.message}`);
-      }
+      try{ await saveEdits(); } catch(err) { log(`Error: ${err.message}`); }
     });
     $("imageBtn").addEventListener("click", async () => {
       try{
         await saveEdits();
+        showLoading("Rendering image…", "");
         log("Generating image");
-        const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({})});
+        const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({}), keepBusy:true});
         renderImage(data.image);
         log("Image generated");
-      } catch(err) {
-        log(`Error: ${err.message}`);
-      }
+      } catch(err) { log(`Error: ${err.message}`); }
+      finally { hideLoading(); setBusy(false); }
     });
+
     loadState().catch(err => log(`Error: ${err.message}`));
   </script>
 </body>
