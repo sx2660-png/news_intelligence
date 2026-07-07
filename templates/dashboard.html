@@ -124,6 +124,7 @@
     .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .preview{background:var(--panel);border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
+    .preview-actions{margin-top:12px}
     .log{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);min-height:160px;padding:16px;font-family:var(--mono);font-size:12px;color:var(--sub);white-space:pre-wrap;line-height:1.55}
     .status-line{display:flex;gap:8px;flex-wrap:wrap}
     .status-pill{border:1px solid var(--border);background:var(--panel);border-radius:5px;padding:8px 10px;color:var(--sub);font-family:var(--mono);font-size:11px}
@@ -149,6 +150,8 @@
     .archived-list{display:grid;gap:8px}
     .archived-item{border:1px solid var(--border);background:var(--input);border-radius:6px;padding:8px 10px}
     .archived-subject{font-size:12px;color:var(--sub);line-height:1.35;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .label-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px}
+    .email-label{font-family:var(--mono);font-size:9px;color:var(--ok);border:1px solid rgba(34,197,94,.35);border-radius:4px;padding:1px 5px;text-transform:uppercase}
     .archived-restore{height:26px;border:1px solid var(--border);background:transparent;color:var(--blue);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:0 10px}
     .archived-restore:hover{background:var(--blue);border-color:var(--blue);color:#fff}
     .archived-empty{color:var(--muted);font-size:11px}
@@ -291,6 +294,9 @@
           </div>
           <div class="card-body">
             <div class="preview" id="preview">Generate image first to preview output</div>
+            <div class="preview-actions">
+              <button class="btn primary" id="downloadBtn" disabled>Download</button>
+            </div>
           </div>
         </article>
       </section>
@@ -329,6 +335,7 @@
     let emails = [];
     let archived = [];
     let newUids = new Set();       // uids added by the most recent sync
+    let latestImagePath = "";
     let currentArticle = null;
     let toastTimer = null;
 
@@ -341,9 +348,10 @@
     };
     const setBusy = (busy) => {
       ["runBtn","syncBtn","refreshBtn","saveBtn","imageBtn",
-       "modalGenerateBtn","modalCopyBtn","modalArchiveBtn"].forEach(id => {
+       "downloadBtn","modalGenerateBtn","modalCopyBtn","modalArchiveBtn"].forEach(id => {
         const el = $(id); if(el) el.disabled = busy;
       });
+      if(!busy) updateDownloadButton();
     };
 
     // ── Progress indicator (slim top bar + status toast) ───────────────
@@ -494,10 +502,29 @@
 
     function renderImage(image){
       if(!image || !image.image_path){
+        latestImagePath = "";
         $("preview").innerHTML = `Generate image first to preview output`;
+        updateDownloadButton();
         return;
       }
+      latestImagePath = image.image_path;
       $("preview").innerHTML = `<img src="/api/image?path=${encodeURIComponent(image.image_path)}&t=${Date.now()}" alt="Generated WeChat image">`;
+      updateDownloadButton();
+    }
+
+    function updateDownloadButton(){
+      const btn = $("downloadBtn");
+      if(btn) btn.disabled = !latestImagePath;
+    }
+
+    function triggerImageDownload(){
+      if(!latestImagePath) throw new Error("No generated image to download");
+      const link = document.createElement("a");
+      link.href = `/api/image/download?path=${encodeURIComponent(latestImagePath)}`;
+      link.download = "";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     }
 
     // ── Archive / restore (soft delete) ────────────────────────────────
@@ -506,6 +533,7 @@
       $("archivedList").innerHTML = archived.map(email => `
         <div class="archived-item">
           <div class="archived-subject">${escapeHtml(email.subject)}</div>
+          ${(email.labels || []).length ? `<div class="label-row">${email.labels.map(label => `<span class="email-label">${escapeHtml(label)}</span>`).join("")}</div>` : ""}
           <button class="archived-restore" data-restore="${email.uid}">↩ Restore</button>
         </div>
       `).join("") || `<div class="archived-empty">Nothing archived.</div>`;
@@ -529,6 +557,16 @@
       if(String(selectedUid) === String(uid)){ selectedUid = null; closeModal(); }
       applyArchiveData(data);
       log("Email archived (recoverable from the Archived panel)");
+    }
+
+    async function archiveProcessedEmail(uid){
+      if(!uid) return;
+      log(`Archiving processed email ${uid}`);
+      const data = await api("/api/archive-processed", {method:"POST", body:JSON.stringify({uid}), keepBusy:true});
+      if(String(selectedUid) === String(uid)){ selectedUid = null; }
+      applyArchiveData(data);
+      $("selectedUid").textContent = selectedUid || "none";
+      log("Processed email archived");
     }
 
     async function restoreEmail(uid){
@@ -556,6 +594,7 @@
       renderEmails();
       renderArchived();
       renderArticle(data.current_article);
+      renderImage(null);
       applySyncDefaults(data.last_fetch);
       log(`Loaded ${emails.length} relevant emails`);
     }
@@ -567,7 +606,7 @@
     $("modalOverlay").addEventListener("click", (e) => { if(e.target === $("modalOverlay")) closeModal(); });
     document.addEventListener("keydown", (e) => { if(e.key === "Escape") closeModal(); });
 
-    // Fetch new mail into the list. Returns the relevant-email array.
+    // Fetch new mail into the list. Returns the full fetch response.
     async function syncEmails(){
       const payload = {};
       const days = parseInt($("rangeDays").value, 10);
@@ -577,27 +616,25 @@
         payload.since = since.toISOString().slice(0,10);
       }
       log("Syncing Gmail inbox");
-      const before = new Set(emails.map(e => String(e.uid)));
       const data = await api("/api/fetch", {method:"POST", body:JSON.stringify(payload), keepBusy:true});
       emails = data.relevant || [];
       $("emailCount").textContent = String(data.emails_count || 0);
 
-      // Flag relevant items that weren't in the list before this sync.
-      const fresh = emails.filter(e => !before.has(String(e.uid)));
+      const fresh = data.new_relevant || [];
       fresh.forEach(e => newUids.add(String(e.uid)));
       renderEmails();
       applySyncDefaults(data.last_fetch);
       log(`Synced ${data.fetched_count} new messages — ${emails.length} relevant news items`);
       if(fresh.length) showToast(`${fresh.length} new news item${fresh.length > 1 ? "s" : ""}`);
-      return emails;
+      return data;
     }
 
     // Sync only — fetch and update the list, no generation.
     $("syncBtn").addEventListener("click", async () => {
       showLoading("Syncing Gmail…");
       try{
-        const list = await syncEmails();
-        if(!list.length) log("No relevant news notices in this window.");
+        const data = await syncEmails();
+        if(!(data.relevant || []).length) log("No relevant news notices in this window.");
       } catch(err) {
         log(`Error: ${err.message}`);
       } finally {
@@ -610,16 +647,29 @@
     $("runBtn").addEventListener("click", async () => {
       showLoading("Syncing Gmail…");
       try{
-        const list = await syncEmails();
-        if(!list.length){
-          log("No relevant news notices in this window.");
+        const data = await syncEmails();
+        const fresh = data.new_relevant || [];
+        const list = data.relevant || [];
+        if(!fresh.length && !list.length){
+          const message = "No new breaking news in this time range. Please sync a wider range or restore/select from archive.";
+          showToast(message);
+          log(message);
           return;
         }
-        selectedUid = list[0].uid;
+        if(!fresh.length){
+          const message = "No new breaking news in this time range. Using the latest Active Email.";
+          showToast(message);
+          log(message);
+        }
+        const target = fresh.length ? fresh[0] : list[0];
+        selectedUid = target.uid;
         $("selectedUid").textContent = selectedUid;
         renderEmails();
-        log("Selected latest relevant email");
+        log(fresh.length ? "Selected latest new relevant email" : "Selected latest active email");
         await generateCopyAndImage(selectedUid);
+        triggerImageDownload();
+        log("Image download triggered");
+        await archiveProcessedEmail(selectedUid);
       } catch(err) {
         log(`Error: ${err.message}`);
       } finally {
@@ -660,6 +710,12 @@
         log("Image generated");
       } catch(err) { log(`Error: ${err.message}`); }
       finally { hideLoading(); setBusy(false); }
+    });
+    $("downloadBtn").addEventListener("click", () => {
+      try{
+        triggerImageDownload();
+        log("Image download triggered");
+      } catch(err) { log(`Error: ${err.message}`); }
     });
 
     loadState().catch(err => log(`Error: ${err.message}`));

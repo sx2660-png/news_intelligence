@@ -70,6 +70,7 @@ def _load_fetch_state() -> dict:
     state = _read_json(FETCH_STATE_FILE, {}) or {}
     state.setdefault("last_fetch", None)
     state.setdefault("archived_uids", [])
+    state.setdefault("email_labels", {})
     return state
 
 
@@ -79,6 +80,43 @@ def _save_fetch_state(state: dict) -> None:
 
 def _archived_uids() -> set[str]:
     return {str(uid) for uid in _load_fetch_state().get("archived_uids", [])}
+
+
+def _email_labels(uid: str) -> list[str]:
+    labels = _load_fetch_state().get("email_labels", {}).get(str(uid), [])
+    return sorted({str(label) for label in labels if str(label).strip()})
+
+
+def _archive_uid(uid: str, label: str | None = None) -> None:
+    state = _load_fetch_state()
+    archived = {str(u) for u in state.get("archived_uids", [])}
+    archived.add(str(uid))
+    state["archived_uids"] = sorted(archived)
+
+    if label:
+        email_labels = state.setdefault("email_labels", {})
+        labels = {str(item) for item in email_labels.get(str(uid), [])}
+        labels.add(label)
+        email_labels[str(uid)] = sorted(labels)
+
+    _save_fetch_state(state)
+
+
+def _restore_uid(uid: str) -> None:
+    state = _load_fetch_state()
+    archived = {str(u) for u in state.get("archived_uids", [])}
+    archived.discard(str(uid))
+    state["archived_uids"] = sorted(archived)
+
+    email_labels = state.setdefault("email_labels", {})
+    labels = {str(item) for item in email_labels.get(str(uid), [])}
+    labels.discard("processed")
+    if labels:
+        email_labels[str(uid)] = sorted(labels)
+    else:
+        email_labels.pop(str(uid), None)
+
+    _save_fetch_state(state)
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -144,13 +182,15 @@ def _relevant_emails() -> list[dict]:
 
 
 def _email_summary(email: dict) -> dict:
+    uid = str(email.get("uid", ""))
     body = (email.get("body") or "").strip().replace("\n", " ")
     return {
-        "uid": email.get("uid", ""),
+        "uid": uid,
         "date": email.get("date", ""),
         "subject": email.get("subject", ""),
         "sender": email.get("sender", ""),
         "preview": body[:260],
+        "labels": _email_labels(uid),
     }
 
 
@@ -289,18 +329,26 @@ def fetch():
         mail.logout()
 
     existing = _read_json(EMAILS_FILE, [])
+    existing_uids = {str(email.get("uid")) for email in existing}
     merged = _merge_emails(existing, fetched)
     _write_json(EMAILS_FILE, merged)
 
     state["last_fetch"] = now.isoformat()
     _save_fetch_state(state)
 
-    relevant = [_email_summary(email) for email in _relevant_emails()]
+    relevant_emails = _relevant_emails()
+    relevant = [_email_summary(email) for email in relevant_emails]
+    new_relevant = [
+        _email_summary(email)
+        for email in relevant_emails
+        if str(email.get("uid")) not in existing_uids
+    ]
     return jsonify(
         {
             "emails_count": len(merged),
             "fetched_count": len(fetched),
             "relevant": relevant,
+            "new_relevant": new_relevant,
             "last_fetch": state["last_fetch"],
         }
     )
@@ -339,11 +387,8 @@ def archive_email():
     if not uid:
         return jsonify({"error": "uid is required"}), 400
 
-    state = _load_fetch_state()
-    archived = {str(u) for u in state.get("archived_uids", [])}
-    archived.add(uid)
-    state["archived_uids"] = sorted(archived)
-    _save_fetch_state(state)
+    label = (payload.get("label") or "").strip() or None
+    _archive_uid(uid, label=label)
 
     return jsonify(_archive_response())
 
@@ -356,12 +401,21 @@ def restore_email():
     if not uid:
         return jsonify({"error": "uid is required"}), 400
 
-    state = _load_fetch_state()
-    archived = {str(u) for u in state.get("archived_uids", [])}
-    archived.discard(uid)
-    state["archived_uids"] = sorted(archived)
-    _save_fetch_state(state)
+    _restore_uid(uid)
 
+    return jsonify(_archive_response())
+
+
+@app.post("/api/archive-processed")
+def archive_processed_email():
+    payload = request.get_json(silent=True) or {}
+    uid = str(payload.get("uid") or "").strip()
+    if not uid:
+        return jsonify({"error": "uid is required"}), 400
+    if not _find_email(uid):
+        return jsonify({"error": "Email not found"}), 404
+
+    _archive_uid(uid, label="processed")
     return jsonify(_archive_response())
 
 
@@ -431,6 +485,15 @@ def image():
     if not path or not resolved.exists() or OUTPUT_DIR not in resolved.parents:
         return jsonify({"error": "Image not found"}), 404
     return send_file(resolved)
+
+
+@app.get("/api/image/download")
+def image_download():
+    path = request.args.get("path", "")
+    resolved = Path(path).resolve()
+    if not path or not resolved.exists() or OUTPUT_DIR not in resolved.parents:
+        return jsonify({"error": "Image not found"}), 404
+    return send_file(resolved, as_attachment=True, download_name=resolved.name)
 
 
 if __name__ == "__main__":
