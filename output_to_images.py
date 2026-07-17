@@ -156,6 +156,7 @@ def generate_images(
     print()
 
     generated = []
+    source_image_path = ""
 
     for idx, article in enumerate(articles, 1):
         title   = article.get("title", "").strip()
@@ -198,12 +199,31 @@ def generate_images(
         except Exception as e:
             print(f"         ❌ Failed: {e}")
 
+    # NEXUS-style companion page: render the source URLs as a separate image.
+    # Keep it separate from the article image so both can be downloaded and
+    # posted independently.
+    if generated:
+        try:
+            source_image_path = _ig.make_reference_image_from_reports(
+                input_file,
+                output_dir=str(out_dir),
+                filename="00_资料来源.png",
+                top_n=1,
+                page_width=page_width,
+                device_scale=device_scale,
+                brand_color=brand_color,
+            )
+            print(f"         ✅ {Path(source_image_path).name}")
+        except Exception as e:
+            print(f"         ❌ Source image failed: {e}")
+
     print(f"\n[✓] Done — {len(generated)} images saved to {out_dir}")
     return {
         "success": True,
         "school": school,
         "output_dir": str(out_dir),
         "generated_files": generated,
+        "source_image_path": source_image_path,
         "total": len(generated),
     }
 

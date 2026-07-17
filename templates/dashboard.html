@@ -124,6 +124,8 @@
     .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .preview{background:var(--panel);border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
+    .preview-stack{display:grid;gap:14px;width:100%}
+    .preview-label{font-family:var(--mono);font-size:9px;letter-spacing:.5px;color:var(--muted);text-align:left;text-transform:uppercase}
     .preview-actions{margin-top:12px}
     .log{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);min-height:160px;padding:16px;font-family:var(--mono);font-size:12px;color:var(--sub);white-space:pre-wrap;line-height:1.55}
     .status-line{display:flex;gap:8px;flex-wrap:wrap}
@@ -367,6 +369,7 @@
     let archived = [];
     let newUids = new Set();       // uids added by the most recent sync
     let latestImagePath = "";
+    let latestSourceImagePath = "";
     let currentArticle = null;
     let toastTimer = null;
 
@@ -578,12 +581,18 @@
     function renderImage(image){
       if(!image || !image.image_path){
         latestImagePath = "";
+        latestSourceImagePath = "";
         $("preview").innerHTML = `Generate image first to preview output`;
         updateDownloadButton();
         return;
       }
       latestImagePath = image.image_path;
-      $("preview").innerHTML = `<img src="/api/image?path=${encodeURIComponent(image.image_path)}&t=${Date.now()}" alt="Generated WeChat image">`;
+      latestSourceImagePath = image.source_image_path || "";
+      const stamp = Date.now();
+      const sourcePreview = latestSourceImagePath
+        ? `<div class="preview-label">Source</div><img src="/api/image?path=${encodeURIComponent(latestSourceImagePath)}&t=${stamp}" alt="Generated source image">`
+        : "";
+      $("preview").innerHTML = `<div class="preview-stack"><div class="preview-label">正文</div><img src="/api/image?path=${encodeURIComponent(image.image_path)}&t=${stamp}" alt="Generated WeChat image">${sourcePreview}</div>`;
       updateDownloadButton();
     }
 
@@ -594,12 +603,14 @@
 
     function triggerImageDownload(){
       if(!latestImagePath) throw new Error("No generated image to download");
-      const link = document.createElement("a");
-      link.href = `/api/image/download?path=${encodeURIComponent(latestImagePath)}`;
-      link.download = "";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      [latestImagePath, latestSourceImagePath].filter(Boolean).forEach(path => {
+        const link = document.createElement("a");
+        link.href = `/api/image/download?path=${encodeURIComponent(path)}`;
+        link.download = "";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      });
     }
 
     // ── Archive / restore (soft delete) ────────────────────────────────

@@ -279,6 +279,7 @@ def _generate_image_for_current_article(school: str | None = None) -> dict:
     return {
         "output_dir": result.get("output_dir", ""),
         "image_path": _latest_image_path(result),
+        "source_image_path": result.get("source_image_path", ""),
         "total": result.get("total", 0),
     }
 

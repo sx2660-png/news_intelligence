@@ -474,6 +474,7 @@ def _extract_urls_from_report(r: dict) -> list[str]:
         "summary",
         "body",
         "content",
+        "original_body",
     ]:
         txt = r.get(fld) or ""
         if isinstance(txt, str) and txt:
