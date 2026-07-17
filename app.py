@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ FETCH_STATE_FILE = BASE_DIR / "fetch_state.json"
 # Fallback window (days) used the very first time we fetch, before any
 # last-fetch timestamp has been recorded.
 DEFAULT_FETCH_DAYS = 7
+MAX_MANUAL_IMAGE_BYTES = 10 * 1024 * 1024
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-news-intelligence-session-key")
@@ -217,6 +219,39 @@ def _make_article(email: dict) -> dict:
         "body": body,
         "original_body": email["body"],
     }
+
+
+def _extract_image_text(image_bytes: bytes, mime_type: str) -> str:
+    api_key = os.environ.get("OPENROUTER_API_KEY") or content_generator.OPENROUTER_API_KEY
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is not set")
+    client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    response = client.chat.completions.create(
+        model=os.environ.get("MANUAL_VISION_MODEL", "google/gemini-2.5-flash"),
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": "请完整提取这张图片中的新闻事实和可见文字。不要推测，不要改写，不要描述界面。"},
+            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded}"}},
+        ]}],
+        temperature=0.1,
+        max_tokens=1800,
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+def _make_manual_article(source_type: str, source_text: str, source_title: str = "", source_url: str = "") -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    source = {
+        "uid": f"manual-{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+        "date": now,
+        "subject": source_title or "手动导入",
+        "sender": source_url or f"Manual {source_type}",
+        "body": source_text,
+    }
+    article = _make_article(source)
+    article["source_type"] = source_type
+    article["source_url"] = source_url
+    return article
 
 
 def _save_single_article(article: dict) -> None:
@@ -433,6 +468,42 @@ def generate():
     _save_single_article(article)
     image = _generate_image_for_current_article(school=school)
     return jsonify({"article": article, "image": image})
+
+
+@app.post("/api/manual-import")
+def manual_import():
+    source_type = (request.form.get("source_type") or "text").strip().lower()
+    source_text = (request.form.get("text") or "").strip()
+    source_title = (request.form.get("title") or "").strip()
+    source_url = ""
+
+    try:
+        if source_type == "image":
+            upload = request.files.get("image")
+            if not upload or not upload.filename:
+                return jsonify({"error": "请选择一张图片"}), 400
+            mime_type = (upload.mimetype or "").lower()
+            if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+                return jsonify({"error": "仅支持 JPG、PNG 或 WebP 图片"}), 400
+            image_bytes = upload.read(MAX_MANUAL_IMAGE_BYTES + 1)
+            if len(image_bytes) > MAX_MANUAL_IMAGE_BYTES:
+                return jsonify({"error": "图片不能超过 10 MB"}), 400
+            source_text = _extract_image_text(image_bytes, mime_type)
+        elif source_type != "text":
+            return jsonify({"error": "不支持的导入类型"}), 400
+
+        if len(source_text) < 30:
+            return jsonify({"error": "内容太短，请至少提供 30 个字符"}), 400
+
+        article = _make_manual_article(source_type, source_text, source_title, source_url)
+        _save_single_article(article)
+        image = _generate_image_for_current_article()
+        return jsonify({"article": article, "image": image, "extracted_text": source_text})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
+    except Exception as exc:
+        app.logger.exception("Manual import failed")
+        return jsonify({"error": f"导入失败：{exc}"}), 502
 
 
 @app.post("/api/regenerate-copy")

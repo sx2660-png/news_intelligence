@@ -144,6 +144,17 @@
     .date-field select:hover{border-color:var(--border-2)}
     .sync-btns{display:grid;gap:8px}
     .sync-meta{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5}
+    .source-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;background:var(--input);border:1px solid var(--border);border-radius:6px;margin-bottom:12px}
+    .source-option{height:30px;border:0;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:700}
+    .source-option.active{background:var(--blue);color:#fff}
+    .source-pane[hidden],.manual-kind-pane[hidden]{display:none}
+    .manual-kinds{display:flex;gap:4px;margin-bottom:10px}
+    .manual-kind{height:27px;flex:1;border:1px solid var(--border);background:var(--input);color:var(--muted);border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:9px}
+    .manual-kind.active{border-color:var(--blue);color:var(--text);background:rgba(59,124,255,.12)}
+    .manual-input{width:100%;min-height:72px;background:var(--input);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:9px;outline:none;resize:vertical;font-size:11px;line-height:1.45;margin-bottom:8px}
+    input.manual-input{min-height:34px;height:34px;resize:none}
+    input[type="file"].manual-input{height:auto;min-height:42px;padding:9px 7px;color:var(--muted)}
+    .manual-note{font-size:9px;color:var(--muted);line-height:1.45;margin:-2px 0 9px}
 
     /* Archived list */
     .panel-count{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--input);border:1px solid var(--border);border-radius:10px;padding:1px 7px;margin-left:6px}
@@ -205,23 +216,43 @@
           </div>
         </div>
         <div class="sync-panel">
-          <div class="sync-title">Sync inbox → news list</div>
-          <div class="date-field">
-            <label for="rangeDays">Time range</label>
-            <select id="rangeDays">
-              <option value="">Since last sync</option>
-              <option value="1">Last 1 day</option>
-              <option value="3">Last 3 days</option>
-              <option value="7">Last 7 days</option>
-              <option value="14">Last 14 days</option>
-              <option value="30">Last 30 days</option>
-            </select>
+          <div class="sync-title">Source → news production</div>
+          <div class="source-switch" role="tablist" aria-label="Content source">
+            <button class="source-option active" data-source="email" role="tab" aria-selected="true">Email</button>
+            <button class="source-option" data-source="manual" role="tab" aria-selected="false">Manual Upload</button>
           </div>
-          <div class="sync-btns">
-            <button class="btn primary" id="runBtn">Run</button>
-            <button class="btn" id="syncBtn">Sync New Emails</button>
+          <div class="source-pane" id="emailSourcePane">
+            <div class="date-field">
+              <label for="rangeDays">Time range</label>
+              <select id="rangeDays">
+                <option value="">Since last sync</option>
+                <option value="1">Last 1 day</option>
+                <option value="3">Last 3 days</option>
+                <option value="7">Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+            </div>
+            <div class="sync-btns">
+              <button class="btn primary" id="runBtn">Run</button>
+              <button class="btn" id="syncBtn">Sync New Emails</button>
+            </div>
+            <div class="sync-meta" id="syncMeta">Run = fetch + auto-generate latest. Sync = fetch list only.</div>
           </div>
-          <div class="sync-meta" id="syncMeta">Run = fetch + auto-generate latest. Sync = fetch list only.</div>
+          <div class="source-pane" id="manualSourcePane" hidden>
+            <div class="manual-kinds" role="tablist" aria-label="Manual import type">
+              <button class="manual-kind active" data-kind="text">Paste Text</button>
+              <button class="manual-kind" data-kind="image">Upload Image</button>
+            </div>
+            <div class="manual-kind-pane" data-kind-pane="text">
+              <textarea class="manual-input" id="manualText" placeholder="Paste the Xiaohongshu caption or any source text…"></textarea>
+            </div>
+            <div class="manual-kind-pane" data-kind-pane="image" hidden>
+              <input class="manual-input" id="manualImage" type="file" accept="image/jpeg,image/png,image/webp">
+              <div class="manual-note">JPG, PNG or WebP, up to 10 MB. Text is extracted before rewriting.</div>
+            </div>
+            <button class="btn primary" id="manualGenerateBtn">Run</button>
+          </div>
         </div>
         <details class="side-panel">
           <summary>Pipeline Steps</summary>
@@ -348,7 +379,7 @@
     };
     const setBusy = (busy) => {
       ["runBtn","syncBtn","refreshBtn","saveBtn","imageBtn",
-       "downloadBtn","modalGenerateBtn","modalCopyBtn","modalArchiveBtn"].forEach(id => {
+       "downloadBtn","manualGenerateBtn","modalGenerateBtn","modalCopyBtn","modalArchiveBtn"].forEach(id => {
         const el = $(id); if(el) el.disabled = busy;
       });
       if(!busy) updateDownloadButton();
@@ -384,6 +415,23 @@
       applyTheme(next);
     }
     applyTheme(localStorage.getItem("theme") || "dark");
+
+    // ── Source switch / manual import ────────────────────────────────
+    let manualKind = "text";
+    function selectSource(source){
+      document.querySelectorAll(".source-option").forEach(btn => {
+        const active = btn.dataset.source === source;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-selected", String(active));
+      });
+      $("emailSourcePane").hidden = source !== "email";
+      $("manualSourcePane").hidden = source !== "manual";
+    }
+    function selectManualKind(kind){
+      manualKind = kind;
+      document.querySelectorAll(".manual-kind").forEach(btn => btn.classList.toggle("active", btn.dataset.kind === kind));
+      document.querySelectorAll("[data-kind-pane]").forEach(pane => pane.hidden = pane.dataset.kindPane !== kind);
+    }
 
     async function api(path, options = {}){
       const {keepBusy = false, ...fetchOptions} = options;
@@ -500,6 +548,33 @@
       }
     }
 
+    async function importManualSource(){
+      const form = new FormData();
+      form.append("source_type", manualKind);
+      if(manualKind === "text") form.append("text", $("manualText").value.trim());
+      if(manualKind === "image"){
+        const file = $("manualImage").files[0];
+        if(file) form.append("image", file);
+      }
+      setBusy(true);
+      showLoading(manualKind === "image" ? "Reading image, generating copy + image…" : "Generating copy + image…");
+      log(`Importing manual ${manualKind} source`);
+      try{
+        const res = await fetch("/api/manual-import", {method:"POST", body:form});
+        const data = await res.json();
+        if(!res.ok) throw new Error(data.error || res.statusText);
+        renderArticle(data.article);
+        renderImage(data.image);
+        log("Manual source imported; copy and image generated");
+        triggerImageDownload();
+        log("Image download triggered");
+        showToast("Image generated and downloaded");
+      } finally {
+        hideLoading();
+        setBusy(false);
+      }
+    }
+
     function renderImage(image){
       if(!image || !image.image_path){
         latestImagePath = "";
@@ -601,6 +676,11 @@
 
     // ── Events ─────────────────────────────────────────────────────────
     $("themeBtn").addEventListener("click", toggleTheme);
+    document.querySelectorAll(".source-option").forEach(btn => btn.addEventListener("click", () => selectSource(btn.dataset.source)));
+    document.querySelectorAll(".manual-kind").forEach(btn => btn.addEventListener("click", () => selectManualKind(btn.dataset.kind)));
+    $("manualGenerateBtn").addEventListener("click", async () => {
+      try{ await importManualSource(); } catch(err) { log(`Error: ${err.message}`); showToast(err.message); }
+    });
     $("refreshBtn").addEventListener("click", loadState);
     $("modalClose").addEventListener("click", closeModal);
     $("modalOverlay").addEventListener("click", (e) => { if(e.target === $("modalOverlay")) closeModal(); });
