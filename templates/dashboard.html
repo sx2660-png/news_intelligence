@@ -121,6 +121,8 @@
     .editor-empty{margin:0;color:var(--muted);padding:8px 2px}
     .editor-title{height:auto;min-height:48px;font-size:22px;font-weight:800;line-height:1.25;padding:12px 14px}
     .editor-body{min-height:360px;font-size:16px;line-height:1.75}
+    .source-field-note{margin:5px 0 0;font-size:11px;line-height:1.45;color:var(--muted)}
+    .source-field-note.found{color:var(--ok)}
     .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .preview{background:var(--panel);border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
@@ -149,10 +151,7 @@
     .source-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;background:var(--input);border:1px solid var(--border);border-radius:6px;margin-bottom:12px}
     .source-option{height:30px;border:0;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:10px;font-weight:700}
     .source-option.active{background:var(--blue);color:#fff}
-    .source-pane[hidden],.manual-kind-pane[hidden]{display:none}
-    .manual-kinds{display:flex;gap:4px;margin-bottom:10px}
-    .manual-kind{height:27px;flex:1;border:1px solid var(--border);background:var(--input);color:var(--muted);border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:9px}
-    .manual-kind.active{border-color:var(--blue);color:var(--text);background:rgba(59,124,255,.12)}
+    .source-pane[hidden]{display:none}
     .manual-input{width:100%;min-height:72px;background:var(--input);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:9px;outline:none;resize:vertical;font-size:11px;line-height:1.45;margin-bottom:8px}
     input.manual-input{min-height:34px;height:34px;resize:none}
     input[type="file"].manual-input{height:auto;min-height:42px;padding:9px 7px;color:var(--muted)}
@@ -168,6 +167,11 @@
     .archived-restore{height:26px;border:1px solid var(--border);background:transparent;color:var(--blue);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:0 10px}
     .archived-restore:hover{background:var(--blue);border-color:var(--blue);color:#fff}
     .archived-empty{color:var(--muted);font-size:11px}
+    .history-list{display:grid;gap:8px;max-height:240px;overflow:auto}
+    .history-item{width:100%;border:1px solid var(--border);background:var(--input);border-radius:6px;padding:9px 10px;text-align:left;color:var(--sub);cursor:pointer}
+    .history-item:hover{border-color:var(--blue);color:var(--text)}
+    .history-title{font-size:12px;color:var(--text);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .history-source{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
     /* Modal / floating email preview */
     .modal-overlay{position:fixed;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;z-index:50;padding:24px;backdrop-filter:blur(2px)}
@@ -242,17 +246,9 @@
             <div class="sync-meta" id="syncMeta">Run = fetch + auto-generate latest. Sync = fetch list only.</div>
           </div>
           <div class="source-pane" id="manualSourcePane" hidden>
-            <div class="manual-kinds" role="tablist" aria-label="Manual import type">
-              <button class="manual-kind active" data-kind="text">Paste Text</button>
-              <button class="manual-kind" data-kind="image">Upload Image</button>
-            </div>
-            <div class="manual-kind-pane" data-kind-pane="text">
-              <textarea class="manual-input" id="manualText" placeholder="Paste the Xiaohongshu caption or any source text…"></textarea>
-            </div>
-            <div class="manual-kind-pane" data-kind-pane="image" hidden>
-              <input class="manual-input" id="manualImage" type="file" accept="image/jpeg,image/png,image/webp">
-              <div class="manual-note">JPG, PNG or WebP, up to 10 MB. Text is extracted before rewriting.</div>
-            </div>
+            <textarea class="manual-input" id="manualInput" placeholder="Paste URL, text, or an image…"></textarea>
+            <input id="manualImage" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+            <div class="manual-note" id="manualInputNote">Paste text, a URL, or an image. Double-click here to upload an image.</div>
             <button class="btn primary" id="manualGenerateBtn">Run</button>
           </div>
         </div>
@@ -270,6 +266,12 @@
           <summary>Archived <span id="archivedCount" class="panel-count">0</span></summary>
           <div class="side-panel-body">
             <div id="archivedList" class="archived-list"></div>
+          </div>
+        </details>
+        <details class="side-panel" id="historyPanel">
+          <summary>History <span id="historyCount" class="panel-count">0</span></summary>
+          <div class="side-panel-body">
+            <div id="historyList" class="history-list"></div>
           </div>
         </details>
         <details class="side-panel">
@@ -367,6 +369,7 @@
     let selectedUid = null;        // uid open in the preview modal
     let emails = [];
     let archived = [];
+    let historyItems = [];
     let newUids = new Set();       // uids added by the most recent sync
     let latestImagePath = "";
     let latestSourceImagePath = "";
@@ -421,6 +424,7 @@
 
     // ── Source switch / manual import ────────────────────────────────
     let manualKind = "text";
+    let manualImageFile = null;
     function selectSource(source){
       document.querySelectorAll(".source-option").forEach(btn => {
         const active = btn.dataset.source === source;
@@ -430,10 +434,10 @@
       $("emailSourcePane").hidden = source !== "email";
       $("manualSourcePane").hidden = source !== "manual";
     }
-    function selectManualKind(kind){
-      manualKind = kind;
-      document.querySelectorAll(".manual-kind").forEach(btn => btn.classList.toggle("active", btn.dataset.kind === kind));
-      document.querySelectorAll("[data-kind-pane]").forEach(pane => pane.hidden = pane.dataset.kindPane !== kind);
+    function detectManualKind(){
+      if(manualImageFile) return "image";
+      const value = $("manualInput").value.trim();
+      return /^https?:\/\/\S+$/i.test(value) ? "url" : "text";
     }
 
     async function api(path, options = {}){
@@ -441,7 +445,13 @@
       setBusy(true);
       try{
         const res = await fetch(path, {headers:{"Content-Type":"application/json"}, ...fetchOptions});
-        const data = await res.json();
+        const raw = await res.text();
+        let data;
+        try { data = JSON.parse(raw); }
+        catch(_) {
+          const detail = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
+          throw new Error(`${path} 返回了非 JSON（HTTP ${res.status}）：${detail || "请确认后端服务已启动"}`);
+        }
         if(!res.ok) throw new Error(data.error || res.statusText);
         return data;
       } finally {
@@ -505,11 +515,17 @@
         return;
       }
       currentArticle = article;
+      const sourceUrl = article.source_url || "";
+      const sourceLookup = article.source_lookup || {};
+      const sourceMessage = sourceLookup.message || (sourceUrl ? "已找到一个联网来源。" : "未找到合适的联网来源，建议手动添加来源。");
       $("articleBox").innerHTML = `
         <label for="articleTitle">Title</label>
         <textarea class="field editor-title" id="articleTitle">${escapeHtml(article.title)}</textarea>
         <label for="articleBody" style="margin-top:14px">Content</label>
         <textarea class="field editor-body" id="articleBody">${escapeHtml(article.body)}</textarea>
+        <label for="sourceUrl" style="margin-top:14px">Source URL</label>
+        <input class="field" id="sourceUrl" type="url" placeholder="https://example.com/original-source" value="${escapeHtml(sourceUrl)}">
+        <p class="source-field-note ${sourceUrl ? "found" : ""}" id="sourceNote">${escapeHtml(sourceMessage)}</p>
       `;
     }
 
@@ -517,7 +533,7 @@
       const titleEl = $("articleTitle");
       const bodyEl = $("articleBody");
       if(!titleEl || !bodyEl) throw new Error("No generated article to edit");
-      return { title: titleEl.value.trim(), body: bodyEl.value.trim() };
+      return { title: titleEl.value.trim(), body: bodyEl.value.trim(), source_url: $("sourceUrl")?.value.trim() || "" };
     }
 
     async function saveEdits(){
@@ -527,6 +543,10 @@
         body:JSON.stringify(editedArticlePayload())
       });
       currentArticle = data.article;
+      if(data.history){
+        historyItems = data.history;
+        renderHistory();
+      }
       log("Article edits saved");
       return data.article;
     }
@@ -543,6 +563,17 @@
         });
         renderArticle(data.article);
         renderImage(data.image);
+        if(data.history){
+          historyItems = data.history;
+          renderHistory();
+        }
+        const sourceLookup = data.article?.source_lookup;
+        if(sourceLookup && !sourceLookup.found){
+          showToast(sourceLookup.message);
+          log(sourceLookup.message);
+        } else if(sourceLookup?.url){
+          log(`Source found: ${sourceLookup.url}`);
+        }
         log("Copy and image generated");
         return data;
       } finally {
@@ -553,18 +584,23 @@
 
     async function importManualSource(){
       const form = new FormData();
+      manualKind = detectManualKind();
       form.append("source_type", manualKind);
-      if(manualKind === "text") form.append("text", $("manualText").value.trim());
-      if(manualKind === "image"){
-        const file = $("manualImage").files[0];
-        if(file) form.append("image", file);
-      }
+      if(manualKind === "url") form.append("url", $("manualInput").value.trim());
+      if(manualKind === "text") form.append("text", $("manualInput").value.trim());
+      if(manualKind === "image") form.append("image", manualImageFile);
       setBusy(true);
       showLoading(manualKind === "image" ? "Reading image, generating copy + image…" : "Generating copy + image…");
       log(`Importing manual ${manualKind} source`);
       try{
         const res = await fetch("/api/manual-import", {method:"POST", body:form});
-        const data = await res.json();
+        const raw = await res.text();
+        let data;
+        try { data = JSON.parse(raw); }
+        catch(_) {
+          const detail = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
+          throw new Error(`接口返回了非 JSON（HTTP ${res.status}）：${detail || "请确认后端服务已重启"}`);
+        }
         if(!res.ok) throw new Error(data.error || res.statusText);
         renderArticle(data.article);
         renderImage(data.image);
@@ -628,12 +664,37 @@
       });
     }
 
+    function renderHistory(){
+      $("historyCount").textContent = String(historyItems.length);
+      $("historyPanel").open = historyItems.length > 0;
+      $("historyList").innerHTML = historyItems.map(item => `
+        <button class="history-item" data-history="${escapeHtml(item.source_id)}">
+          <div class="history-title">${escapeHtml(item.title || "Untitled")}</div>
+          <div class="history-source">${escapeHtml(item.source_url || "未添加来源")}</div>
+        </button>
+      `).join("") || `<div class="archived-empty">No generated stories yet.</div>`;
+      document.querySelectorAll(".history-item").forEach(btn => {
+        btn.addEventListener("click", () => loadHistoryItem(btn.dataset.history));
+      });
+    }
+
+    async function loadHistoryItem(sourceId){
+      try{
+        const item = await api(`/api/history/${encodeURIComponent(sourceId)}`, {method:"GET"});
+        renderArticle(item);
+        renderImage(item.image || null);
+        log(`Loaded history: ${item.source_url || sourceId}`);
+      } catch(err) { log(`Error: ${err.message}`); }
+    }
+
     function applyArchiveData(data){
       emails = data.relevant || [];
       archived = data.archived || [];
+      historyItems = data.history || [];
       $("emailCount").textContent = String(data.emails_count || 0);
       renderEmails();
       renderArchived();
+      renderHistory();
     }
 
     async function archiveEmail(uid){
@@ -676,11 +737,13 @@
       const data = await api("/api/state", {method:"GET"});
       emails = data.relevant || [];
       archived = data.archived || [];
+      historyItems = data.history || [];
       $("emailCount").textContent = String(data.emails_count || 0);
       renderEmails();
       renderArchived();
+      renderHistory();
       renderArticle(data.current_article);
-      renderImage(null);
+      renderImage(data.current_article?.image || null);
       applySyncDefaults(data.last_fetch);
       log(`Loaded ${emails.length} relevant emails`);
     }
@@ -688,7 +751,32 @@
     // ── Events ─────────────────────────────────────────────────────────
     $("themeBtn").addEventListener("click", toggleTheme);
     document.querySelectorAll(".source-option").forEach(btn => btn.addEventListener("click", () => selectSource(btn.dataset.source)));
-    document.querySelectorAll(".manual-kind").forEach(btn => btn.addEventListener("click", () => selectManualKind(btn.dataset.kind)));
+    const manualInput = $("manualInput");
+    const manualImage = $("manualImage");
+    manualInput.addEventListener("dblclick", () => {
+      manualImage.click();
+    });
+    manualInput.addEventListener("paste", (event) => {
+      const imageItem = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith("image/"));
+      if(imageItem){
+        event.preventDefault();
+        manualImageFile = imageItem.getAsFile();
+        $("manualInputNote").textContent = `Image pasted: ${manualImageFile.name || "clipboard image"}`;
+      }
+    });
+    manualInput.addEventListener("dragover", (event) => event.preventDefault());
+    manualInput.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const file = [...(event.dataTransfer?.files || [])].find(item => item.type.startsWith("image/"));
+      if(file){
+        manualImageFile = file;
+        $("manualInputNote").textContent = `Image dropped: ${file.name}`;
+      }
+    });
+    manualImage.addEventListener("change", () => {
+      manualImageFile = manualImage.files[0] || null;
+      if(manualImageFile) $("manualInputNote").textContent = `Image selected: ${manualImageFile.name}`;
+    });
     $("manualGenerateBtn").addEventListener("click", async () => {
       try{ await importManualSource(); } catch(err) { log(`Error: ${err.message}`); showToast(err.message); }
     });
@@ -782,6 +870,7 @@
         log("Regenerating copy");
         const data = await api("/api/regenerate-copy", {method:"POST", body:JSON.stringify({uid:selectedUid}), keepBusy:true});
         renderArticle(data.article);
+        if(data.history){ historyItems = data.history; renderHistory(); }
         log("Copy regenerated");
       } catch(err) { log(`Error: ${err.message}`); }
       finally { hideLoading(); setBusy(false); }
@@ -798,6 +887,7 @@
         log("Generating image");
         const data = await api("/api/regenerate-image", {method:"POST", body:JSON.stringify({}), keepBusy:true});
         renderImage(data.image);
+        if(data.history){ historyItems = data.history; renderHistory(); }
         log("Image generated");
       } catch(err) { log(`Error: ${err.message}`); }
       finally { hideLoading(); setBusy(false); }

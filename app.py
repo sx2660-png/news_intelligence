@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,7 @@ from openai import OpenAI
 import content_generator
 import gmail_scraper
 import output_to_images
+import source_resolver
 
 
 BASE_DIR = Path(__file__).parent.resolve()
@@ -24,6 +26,7 @@ EMAILS_FILE = BASE_DIR / gmail_scraper.OUTPUT_FILE
 ARTICLES_FILE = BASE_DIR / content_generator.OUTPUT_FILE
 OUTPUT_DIR = BASE_DIR / output_to_images.OUTPUT_DIR
 FETCH_STATE_FILE = BASE_DIR / "fetch_state.json"
+HISTORY_FILE = BASE_DIR / "history.json"
 
 # Fallback window (days) used the very first time we fetch, before any
 # last-fetch timestamp has been recorded.
@@ -203,14 +206,18 @@ def _find_email(uid: str) -> dict | None:
     return None
 
 
-def _make_article(email: dict) -> dict:
+def _make_article(email: dict, source: dict | None = None) -> dict:
     api_key = os.environ.get("OPENROUTER_API_KEY") or content_generator.OPENROUTER_API_KEY
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
 
     client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
-    title, body = content_generator.generate_article(client, email)
-    return {
+    generation_input = dict(email)
+    if source:
+        facts = "\n".join(f"- {item}" for item in (source.get("facts") or []))
+        generation_input["body"] = f"{email.get('body', '')}\n\n已核验来源事实：\n{facts}"
+    title, body = content_generator.generate_article(client, generation_input)
+    article = {
         "uid": email["uid"],
         "date": email["date"],
         "subject": email["subject"],
@@ -219,6 +226,16 @@ def _make_article(email: dict) -> dict:
         "body": body,
         "original_body": email["body"],
     }
+    if source:
+        article.update({
+            "source_id": source["source_id"],
+            "source_url": source["source_url"],
+            "source_title": source.get("source_title", ""),
+            "source_confidence": source.get("source_confidence", 0),
+            "source_method": source.get("source_method", ""),
+            "source_candidates": source.get("source_candidates", []),
+        })
+    return article
 
 
 def _extract_image_text(image_bytes: bytes, mime_type: str) -> str:
@@ -239,7 +256,7 @@ def _extract_image_text(image_bytes: bytes, mime_type: str) -> str:
     return (response.choices[0].message.content or "").strip()
 
 
-def _make_manual_article(source_type: str, source_text: str, source_title: str = "", source_url: str = "") -> dict:
+def _make_manual_article(source_type: str, source_text: str, source_title: str = "", source_url: str = "", resolved: dict | None = None) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     source = {
         "uid": f"manual-{int(datetime.now(timezone.utc).timestamp() * 1000)}",
@@ -248,9 +265,10 @@ def _make_manual_article(source_type: str, source_text: str, source_title: str =
         "sender": source_url or f"Manual {source_type}",
         "body": source_text,
     }
-    article = _make_article(source)
+    article = _make_article(source, source=resolved)
     article["source_type"] = source_type
-    article["source_url"] = source_url
+    if source_url and not article.get("source_url"):
+        article["source_url"] = source_url
     return article
 
 
@@ -261,6 +279,94 @@ def _save_single_article(article: dict) -> None:
 def _current_article() -> dict | None:
     articles = _read_json(ARTICLES_FILE, [])
     return articles[0] if articles else None
+
+
+def _normalize_source_url(url: str) -> str:
+    return (url or "").strip().rstrip("/").split("#", 1)[0]
+
+
+def _source_id(url: str) -> str:
+    return hashlib.sha256(_normalize_source_url(url).encode("utf-8")).hexdigest()
+
+
+def _history_id(article: dict) -> str:
+    """Use article identity so every generated story has its own History item."""
+    uid = str(article.get("uid") or "")
+    if uid:
+        return f"article-{uid}"
+    source_url = _normalize_source_url(article.get("source_url", ""))
+    if source_url:
+        return _source_id(source_url)
+    fingerprint = f"{article.get('title', '')}\n{article.get('body', '')}"
+    return f"article-{hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()}"
+
+
+def _resolve_source_for_record(*, source_type: str, text: str = "", url: str = "", image_bytes: bytes | None = None, mime_type: str = "") -> dict:
+    resolved = source_resolver.resolve_source(
+        source_type=source_type,
+        text=text,
+        url=url,
+        image_bytes=image_bytes,
+        mime_type=mime_type,
+    )
+    selected_url = _normalize_source_url(resolved.get("source_url", ""))
+    if not selected_url:
+        raise ValueError("未能高置信度确认官方来源，请检查候选结果后重试")
+    resolved["source_url"] = selected_url
+    resolved["source_id"] = _source_id(selected_url)
+    return resolved
+
+
+def _make_email_article_with_source(email: dict) -> dict:
+    """Generate mail copy even when the web source cannot be verified."""
+    source = None
+    source_lookup = {"found": False, "message": "未找到合适的联网来源，建议手动添加来源。"}
+    try:
+        source = _resolve_source_for_record(
+            source_type="email",
+            text=f"{email.get('subject', '')}\n{email.get('body', '')}",
+        )
+        source_lookup = {"found": True, "message": "已找到一个联网来源。", "url": source["source_url"]}
+    except ValueError:
+        pass
+    except Exception:
+        # Source discovery is advisory: an unavailable or low-confidence result
+        # must never prevent email copy and image generation.
+        app.logger.exception("Email source lookup failed; continuing without a source")
+    article = _make_article(email, source=source)
+    article["source_lookup"] = source_lookup
+    return article
+
+
+def _load_history() -> list[dict]:
+    history = _read_json(HISTORY_FILE, []) or []
+    return history if isinstance(history, list) else []
+
+
+def _save_history(article: dict, image: dict | None = None) -> dict:
+    source_url = _normalize_source_url(article.get("source_url", ""))
+    now = datetime.now(timezone.utc).isoformat()
+    item = dict(article)
+    item["source_id"] = _history_id(article)
+    item["source_url"] = source_url
+    item["updated_at"] = now
+    existing = _load_history()
+    for index, previous in enumerate(existing):
+        if previous.get("source_id") == item["source_id"] or (item.get("uid") and previous.get("uid") == item["uid"]):
+            item["created_at"] = previous.get("created_at", now)
+            if image:
+                item["image"] = image
+            elif previous.get("image"):
+                item["image"] = previous["image"]
+            existing[index] = item
+            _write_json(HISTORY_FILE, existing)
+            return item
+    item["created_at"] = now
+    if image:
+        item["image"] = image
+    existing.insert(0, item)
+    _write_json(HISTORY_FILE, existing)
+    return item
 
 
 def _latest_image_path(result: dict) -> str:
@@ -330,6 +436,7 @@ def state():
             "relevant": [_email_summary(email) for email in _relevant_emails()],
             "archived": [_email_summary(email) for email in _archived_emails()],
             "current_article": articles[0] if articles else None,
+            "history": _load_history(),
             "last_fetch": _load_fetch_state().get("last_fetch"),
         }
     )
@@ -411,6 +518,7 @@ def _archive_response() -> dict:
         "emails_count": len(_read_json(EMAILS_FILE, [])),
         "relevant": [_email_summary(email) for email in _relevant_emails()],
         "archived": [_email_summary(email) for email in _archived_emails()],
+        "history": _load_history(),
     }
 
 
@@ -465,10 +573,13 @@ def generate():
     if not email:
         return jsonify({"error": "No matching email found"}), 404
 
-    article = _make_article(email)
+    article = _make_email_article_with_source(email)
     _save_single_article(article)
     image = _generate_image_for_current_article(school=school)
-    return jsonify({"article": article, "image": image})
+    article["image"] = image
+    _save_single_article(article)
+    _save_history(article, image=image)
+    return jsonify({"article": article, "image": image, "history": _load_history()})
 
 
 @app.post("/api/manual-import")
@@ -476,9 +587,11 @@ def manual_import():
     source_type = (request.form.get("source_type") or "text").strip().lower()
     source_text = (request.form.get("text") or "").strip()
     source_title = (request.form.get("title") or "").strip()
-    source_url = ""
+    source_url = (request.form.get("url") or "").strip()
 
     try:
+        image_bytes = None
+        mime_type = ""
         if source_type == "image":
             upload = request.files.get("image")
             if not upload or not upload.filename:
@@ -490,15 +603,27 @@ def manual_import():
             if len(image_bytes) > MAX_MANUAL_IMAGE_BYTES:
                 return jsonify({"error": "图片不能超过 10 MB"}), 400
             source_text = _extract_image_text(image_bytes, mime_type)
-        elif source_type != "text":
+        elif source_type not in {"text", "url"}:
             return jsonify({"error": "不支持的导入类型"}), 400
 
-        if len(source_text) < 30:
+        if source_type != "url" and len(source_text) < 30:
             return jsonify({"error": "内容太短，请至少提供 30 个字符"}), 400
+        if source_type == "url" and not source_url:
+            return jsonify({"error": "请输入一个来源 URL"}), 400
 
-        article = _make_manual_article(source_type, source_text, source_title, source_url)
+        source = _resolve_source_for_record(
+            source_type=source_type,
+            text=source_text,
+            url=source_url,
+            image_bytes=image_bytes,
+            mime_type=mime_type,
+        )
+        article = _make_manual_article(source_type, source_text, source_title, source_url, resolved=source)
         _save_single_article(article)
         image = _generate_image_for_current_article()
+        article["image"] = image
+        _save_single_article(article)
+        _save_history(article, image=image)
         return jsonify({"article": article, "image": image, "extracted_text": source_text})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
@@ -517,9 +642,10 @@ def regenerate_copy():
     if not email:
         return jsonify({"error": "No matching email found"}), 404
 
-    article = _make_article(email)
+    article = _make_email_article_with_source(email)
     _save_single_article(article)
-    return jsonify({"article": article})
+    _save_history(article)
+    return jsonify({"article": article, "history": _load_history()})
 
 
 @app.post("/api/regenerate-image")
@@ -529,7 +655,13 @@ def regenerate_image():
     if not ARTICLES_FILE.exists():
         return jsonify({"error": "No article exists yet"}), 404
     image = _generate_image_for_current_article(school=school)
-    return jsonify({"image": image})
+    current = _current_article()
+    if current:
+        current["image"] = image
+        _save_single_article(current)
+    if current:
+        _save_history(current, image=image)
+    return jsonify({"image": image, "history": _load_history()})
 
 
 @app.post("/api/article")
@@ -541,13 +673,42 @@ def update_article():
 
     title = (payload.get("title") or "").strip()
     body = (payload.get("body") or "").strip()
+    source_url = (payload.get("source_url") or "").strip()
     if not title or not body:
         return jsonify({"error": "Title and body are required"}), 400
 
     current["title"] = title
     current["body"] = body
+    if source_url:
+        normalized_source_url = _normalize_source_url(source_url)
+        if not normalized_source_url.startswith(("http://", "https://")):
+            return jsonify({"error": "来源链接必须以 http:// 或 https:// 开头"}), 400
+        source_title = current.get("source_title") or "手动添加来源"
+        current.update({
+            "source_id": _source_id(normalized_source_url),
+            "source_url": normalized_source_url,
+            "source_title": source_title,
+            "source_confidence": 1.0,
+            "source_method": "manual_source_url",
+            "source_candidates": [{"url": normalized_source_url, "title": source_title}],
+            "source_lookup": {"found": True, "message": "已手动添加来源。", "url": normalized_source_url},
+        })
     _save_single_article(current)
-    return jsonify({"article": current})
+    _save_history(current)
+    return jsonify({"article": current, "history": _load_history()})
+
+
+@app.get("/api/history")
+def history():
+    return jsonify({"history": _load_history()})
+
+
+@app.get("/api/history/<source_id>")
+def history_detail(source_id: str):
+    item = next((entry for entry in _load_history() if entry.get("source_id") == source_id), None)
+    if not item:
+        return jsonify({"error": "History item not found"}), 404
+    return jsonify(item)
 
 
 @app.get("/api/image")

@@ -175,7 +175,9 @@ def generate_images(
 
         # Safe filename from title
         safe_title = title[:40].replace("/", "_").replace("\\", "_").replace(":", "_")
-        out_path = out_dir / f"{idx:02d}_{safe_title}.png"
+        source_tag = str(article.get("source_id") or "")[:12]
+        prefix = f"{source_tag}_" if source_tag else ""
+        out_path = out_dir / f"{idx:02d}_{prefix}{safe_title}.png"
 
         print(f"  [{idx}/{len(articles)}] {title[:55]}")
 
@@ -204,10 +206,12 @@ def generate_images(
     # posted independently.
     if generated:
         try:
+            source_tag = str(articles[0].get("source_id") or "")[:12]
+            source_filename = f"00_{source_tag}_资料来源.png" if source_tag else "00_资料来源.png"
             source_image_path = _ig.make_reference_image_from_reports(
                 input_file,
                 output_dir=str(out_dir),
-                filename="00_资料来源.png",
+                filename=source_filename,
                 top_n=1,
                 page_width=page_width,
                 device_scale=device_scale,
