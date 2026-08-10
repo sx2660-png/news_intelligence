@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,7 @@ import content_generator
 import gmail_scraper
 import output_to_images
 import source_resolver
+import wechat_publisher
 
 
 BASE_DIR = Path(__file__).parent.resolve()
@@ -49,7 +51,7 @@ def _is_authenticated() -> bool:
 def require_login():
     if not _auth_enabled():
         return None
-    allowed_endpoints = {"login", "health", "static"}
+    allowed_endpoints = {"login", "health", "static", "wechat_cover"}
     if request.endpoint in allowed_endpoints:
         return None
     if request.path in ("/healthz",):
@@ -696,6 +698,58 @@ def update_article():
     _save_single_article(current)
     _save_history(current)
     return jsonify({"article": current, "history": _load_history()})
+
+
+@app.post("/api/wechat/draft")
+def create_wechat_draft():
+    """Send the currently reviewed article to the configured account's drafts."""
+    current = _current_article()
+    if not current:
+        return jsonify({"error": "No article exists yet"}), 404
+
+    image_path = str((current.get("image") or {}).get("image_path") or "")
+    resolved_image = Path(image_path).resolve()
+    if not image_path or not resolved_image.exists() or OUTPUT_DIR not in resolved_image.parents:
+        return jsonify({"error": "请先生成公众号封面图"}), 422
+
+    app_url = os.environ.get("APP_URL", "").strip().rstrip("/")
+    cover_token = os.environ.get("WECHAT_COVER_TOKEN", "").strip()
+    if not app_url or not cover_token:
+        return jsonify({"error": "请配置 APP_URL 和 WECHAT_COVER_TOKEN，供 MCP 服务读取封面图"}), 422
+    cover_url = f"{app_url}{url_for('wechat_cover', token=cover_token)}"
+
+    try:
+        draft = wechat_publisher.create_draft(current, cover_url)
+    except wechat_publisher.WeChatPublisherError as exc:
+        return jsonify({"error": str(exc)}), 422
+    except Exception:
+        app.logger.exception("Creating WeChat draft failed")
+        return jsonify({"error": "同步到微信公众号草稿箱失败，请检查服务日志和微信公众号 IP 白名单"}), 502
+
+    current["wechat_draft"] = {
+        **draft,
+        "account": os.environ.get("WECHAT_AUTHOR", "NYULIVE"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_single_article(current)
+    _save_history(current)
+    return jsonify({"draft": current["wechat_draft"], "article": current, "history": _load_history()})
+
+
+@app.get("/public/wechat-cover")
+def wechat_cover():
+    """Serve only the current cover when the MCP shared token matches."""
+    expected_token = os.environ.get("WECHAT_COVER_TOKEN", "").strip()
+    supplied_token = request.args.get("token", "")
+    if not expected_token or not hmac.compare_digest(supplied_token, expected_token):
+        return jsonify({"error": "Image not found"}), 404
+
+    current = _current_article() or {}
+    image_path = str((current.get("image") or {}).get("image_path") or "")
+    resolved_image = Path(image_path).resolve()
+    if not image_path or not resolved_image.exists() or OUTPUT_DIR not in resolved_image.parents:
+        return jsonify({"error": "Image not found"}), 404
+    return send_file(resolved_image)
 
 
 @app.get("/api/history")

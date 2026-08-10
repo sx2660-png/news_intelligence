@@ -83,7 +83,7 @@
     .email-archive:hover{background:var(--bad);color:#fff}
     .email-sender{font-size:11px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .empty-side{color:var(--muted);line-height:1.6;text-align:center;padding:44px 26px;font-size:13px}
-    .main{padding:36px 40px 46px;overflow:auto}
+    .main{padding:36px 40px 46px;overflow:auto;min-width:0}
     .hero{margin-bottom:32px}
     .hero h1{margin:0;font-size:26px;letter-spacing:0;font-weight:800}
     .hero p{margin:12px 0 0;color:var(--sub)}
@@ -123,7 +123,7 @@
     .editor-body{min-height:360px;font-size:16px;line-height:1.75}
     .source-field-note{margin:5px 0 0;font-size:11px;line-height:1.45;color:var(--muted)}
     .source-field-note.found{color:var(--ok)}
-    .inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .inline-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
     .preview{background:var(--panel);border:1px solid var(--border);border-radius:5px;min-height:210px;padding:12px;display:grid;place-items:center;color:var(--muted);text-align:center;line-height:1.5}
     .preview img{display:block;width:100%;height:auto;border-radius:3px;background:white}
     .preview-stack{display:grid;gap:14px;width:100%}
@@ -200,7 +200,8 @@
     .toast::before{content:"✉";color:var(--blue)}
 
     @media (max-width:1280px){.production-grid{grid-template-columns:1fr}.preview-column{position:static}}
-    @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{min-height:420px}.main{padding:28px 18px}.production-grid{grid-template-columns:1fr}}
+    @media (max-width:860px){.app{grid-template-columns:minmax(0,1fr)}.sidebar{min-height:420px;min-width:0}.main{padding:28px 18px}.production-grid{grid-template-columns:minmax(0,1fr)}}
+    @media (max-width:600px){.inline-actions{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -317,6 +318,7 @@
               <div class="inline-actions">
                 <button class="btn" id="saveBtn">Save Edits</button>
                 <button class="btn primary" id="imageBtn">Generate Image from Edits</button>
+                <button class="btn primary" id="wechatDraftBtn">Send to NYULIVE Drafts</button>
               </div>
             </div>
           </article>
@@ -384,7 +386,7 @@
       $("log").textContent = `[${new Date().toLocaleTimeString()}] ${text}\n` + $("log").textContent;
     };
     const setBusy = (busy) => {
-      ["runBtn","syncBtn","refreshBtn","saveBtn","imageBtn",
+      ["runBtn","syncBtn","refreshBtn","saveBtn","imageBtn","wechatDraftBtn",
        "downloadBtn","manualGenerateBtn","modalGenerateBtn","modalCopyBtn","modalArchiveBtn"].forEach(id => {
         const el = $(id); if(el) el.disabled = busy;
       });
@@ -890,6 +892,20 @@
         if(data.history){ historyItems = data.history; renderHistory(); }
         log("Image generated");
       } catch(err) { log(`Error: ${err.message}`); }
+      finally { hideLoading(); setBusy(false); }
+    });
+    $("wechatDraftBtn").addEventListener("click", async () => {
+      try{
+        await saveEdits();
+        showLoading("Sending to NYULIVE drafts…", "Uploading cover image and creating a WeChat draft.");
+        log("Sending reviewed article to NYULIVE drafts");
+        const data = await api("/api/wechat/draft", {method:"POST", body:JSON.stringify({}), keepBusy:true});
+        currentArticle = data.article;
+        if(data.history){ historyItems = data.history; renderHistory(); }
+        const draftId = data.draft?.draft_media_id || "";
+        log(`NYULIVE draft created${draftId ? `: ${draftId}` : ""}`);
+        showToast("已发送至 NYULIVE 草稿箱，请在公众号后台审核后群发");
+      } catch(err) { log(`Error: ${err.message}`); showToast(err.message); }
       finally { hideLoading(); setBusy(false); }
     });
     $("downloadBtn").addEventListener("click", () => {
