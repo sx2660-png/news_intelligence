@@ -155,30 +155,49 @@ def parse_title_body(raw: str) -> tuple[str, str]:
 
 
 def generate_article(client: OpenAI, email: dict) -> tuple[str, str]:
-    """Call OpenRouter to rewrite one email. Returns (title, body)."""
-    body_excerpt = email["body"][:3000]  # stay within token budget
+    """Call OpenRouter to rewrite one email. Returns (title, body).
 
-    response = client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": USER_PROMPT_TEMPLATE.format(
-                    subject=email["subject"],
-                    sender=email["sender"],
-                    date=email["date"],
-                    body=body_excerpt,
-                ),
-            },
-        ],
-        temperature=0.7,
-        max_tokens=800,
-    )
-    raw = response.choices[0].message.content.strip()
-    # Strip <think>...</think> reasoning blocks (Qwen chain-of-thought)
-    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.S).strip()
-    return parse_title_body(raw)
+    Some upstream responses contain a valid choice but no message content.
+    Retry that transient state once, then raise a useful error for the UI.
+    """
+    body_excerpt = str(email.get("body") or "")[:3000]  # stay within token budget
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": USER_PROMPT_TEMPLATE.format(
+                subject=email.get("subject") or "",
+                sender=email.get("sender") or "",
+                date=email.get("date") or "",
+                body=body_excerpt,
+            ),
+        },
+    ]
+
+    for attempt in range(2):
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=800,
+        )
+        choices = getattr(response, "choices", None) or []
+        message = getattr(choices[0], "message", None) if choices else None
+        content = getattr(message, "content", None)
+        if not isinstance(content, str) or not content.strip():
+            if attempt == 0:
+                continue
+            raise RuntimeError("OpenRouter 未返回文章正文，请稍后重试")
+
+        # Strip <think>...</think> reasoning blocks (Qwen chain-of-thought)
+        raw = re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
+        if raw:
+            return parse_title_body(raw)
+        if attempt == 0:
+            continue
+        raise RuntimeError("OpenRouter 未返回可用的文章正文，请稍后重试")
+
+    raise RuntimeError("OpenRouter 未返回文章正文，请稍后重试")
 
 
 # ── Main ───────────────────────────────────────────────────────────────

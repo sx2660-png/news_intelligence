@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 assets/fonts/*.otf
 fetch_state.json
+history.json
