@@ -14,6 +14,7 @@ Output: articles_output.json  (filtered + rewritten articles)
 """
 
 import json
+import logging
 import os
 import re
 import sys
@@ -27,6 +28,12 @@ OUTPUT_FILE = "articles_output.json"
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENAI_MODEL       = os.environ.get("OPENAI_MODEL", "qwen/qwen3.7-plus")
+ARTICLE_MAX_TOKENS = int(os.environ.get("ARTICLE_MAX_TOKENS", "2000"))
+ARTICLE_FALLBACK_MODEL = os.environ.get(
+    "ARTICLE_FALLBACK_MODEL",
+    os.environ.get("MANUAL_VISION_MODEL", "google/gemini-2.5-flash"),
+)
+log = logging.getLogger(__name__)
 
 # ── Filter rules ───────────────────────────────────────────────────────
 
@@ -150,17 +157,80 @@ def parse_title_body(raw: str) -> tuple[str, str]:
             continue
         if in_body:
             body_lines.append(line)
+    # Models occasionally omit the required blank line. Treat the remaining
+    # lines as the body instead of reporting a false empty-response failure.
+    if not in_body:
+        body_lines = lines[1:]
     body = "\n".join(body_lines).strip()
     return title, body
+
+
+def _message_text(message) -> str:
+    if message is None:
+        return ""
+    chunks: list[str] = []
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        chunks.append(content)
+    elif isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict):
+                chunks.append(str(part.get("text") or ""))
+            else:
+                chunks.append(str(getattr(part, "text", None) or part or ""))
+    if not any(item.strip() for item in chunks):
+        for attr in ("reasoning", "reasoning_content"):
+            value = getattr(message, attr, None)
+            if isinstance(value, str) and value.strip():
+                chunks.append(value)
+                break
+    return "\n".join(item for item in chunks if item).strip()
+
+
+def _strip_think(text: str) -> str:
+    return re.sub(r"<think>.*?</think>", "", text or "", flags=re.S).strip()
+
+
+def _title_and_body(raw: str, fallback_title: str = "") -> tuple[str, str]:
+    title, body = parse_title_body(raw)
+    if title and body:
+        return title, body
+    if title and not body:
+        return (fallback_title or title), title
+    return "", ""
+
+
+def _create_article_completion(client: OpenAI, *, model: str, messages: list[dict], disable_reasoning: bool):
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": ARTICLE_MAX_TOKENS,
+    }
+    if disable_reasoning:
+        kwargs["extra_body"] = {
+            "reasoning": {
+                "effort": os.environ.get("ARTICLE_REASONING_EFFORT", "none"),
+                "exclude": True,
+            }
+        }
+    try:
+        return client.chat.completions.create(**kwargs)
+    except Exception:
+        if disable_reasoning:
+            kwargs.pop("extra_body", None)
+            return client.chat.completions.create(**kwargs)
+        raise
 
 
 def generate_article(client: OpenAI, email: dict) -> tuple[str, str]:
     """Call OpenRouter to rewrite one email. Returns (title, body).
 
-    Some upstream responses contain a valid choice but no message content.
-    Retry that transient state once, then raise a useful error for the UI.
+    Qwen via OpenRouter often spends the token budget on hidden reasoning and
+    returns an empty content field. Disable reasoning, retry, then fall back.
     """
-    body_excerpt = str(email.get("body") or "")[:3000]  # stay within token budget
+    body_excerpt = str(email.get("body") or "")[:8000]
+    fallback_title = str(email.get("subject") or "").strip() or "新闻速览"
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
@@ -173,30 +243,45 @@ def generate_article(client: OpenAI, email: dict) -> tuple[str, str]:
             ),
         },
     ]
+    models = [OPENAI_MODEL]
+    if ARTICLE_FALLBACK_MODEL and ARTICLE_FALLBACK_MODEL not in models:
+        models.append(ARTICLE_FALLBACK_MODEL)
 
-    for attempt in range(2):
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=800,
-        )
-        choices = getattr(response, "choices", None) or []
-        message = getattr(choices[0], "message", None) if choices else None
-        content = getattr(message, "content", None)
-        if not isinstance(content, str) or not content.strip():
-            if attempt == 0:
+    last_error: Exception | None = None
+    for model in models:
+        disable_reasoning = model == OPENAI_MODEL or "qwen" in model.lower()
+        for attempt in range(2):
+            try:
+                response = _create_article_completion(
+                    client,
+                    model=model,
+                    messages=messages,
+                    disable_reasoning=disable_reasoning,
+                )
+            except Exception as exc:
+                last_error = exc
+                log.warning("Article generation failed (%s attempt %s): %s", model, attempt + 1, exc)
                 continue
-            raise RuntimeError("OpenRouter 未返回文章正文，请稍后重试")
+            choices = getattr(response, "choices", None) or []
+            message = getattr(choices[0], "message", None) if choices else None
+            raw = _strip_think(_message_text(message))
+            if not raw:
+                finish_reason = getattr(choices[0], "finish_reason", None) if choices else None
+                last_error = RuntimeError("OpenRouter 未返回文章正文，请稍后重试")
+                log.warning(
+                    "Empty article content from %s (attempt %s, finish_reason=%s)",
+                    model,
+                    attempt + 1,
+                    finish_reason,
+                )
+                continue
+            title, body = _title_and_body(raw, fallback_title)
+            if title and body:
+                return title, body
+            last_error = RuntimeError("OpenRouter 返回了内容，但无法解析出标题和正文，请重试")
 
-        # Strip <think>...</think> reasoning blocks (Qwen chain-of-thought)
-        raw = re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
-        if raw:
-            return parse_title_body(raw)
-        if attempt == 0:
-            continue
-        raise RuntimeError("OpenRouter 未返回可用的文章正文，请稍后重试")
-
+    if last_error:
+        raise last_error
     raise RuntimeError("OpenRouter 未返回文章正文，请稍后重试")
 
 

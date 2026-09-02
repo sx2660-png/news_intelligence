@@ -6,6 +6,8 @@ import html
 import os
 import re
 
+import requests
+
 
 class WeChatPublisherError(RuntimeError):
     """A user-safe explanation of a WeChat/MCP failure."""
@@ -26,6 +28,72 @@ def _html_content(text: str) -> str:
 
 def _digest(text: str) -> str:
     return re.sub(r"\s+", "", text)[:54]
+
+
+def _official_create_draft(article: dict, image_url: str) -> dict:
+    """Create a draft through WeChat's official API, without the old MCP proxy."""
+    base = _setting("WECHAT_API_BASE_URL") or "https://api.weixin.qq.com"
+    try:
+        token_response = requests.get(
+            f"{base}/cgi-bin/token",
+            params={
+                "grant_type": "client_credential",
+                "appid": _setting("WECHAT_APP_ID"),
+                "secret": _setting("WECHAT_APP_SECRET"),
+            },
+            timeout=20,
+        )
+        token_response.raise_for_status()
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise WeChatPublisherError(token_data.get("errmsg") or "未能取得微信公众号访问凭证")
+
+        image_response = requests.get(image_url, timeout=30)
+        image_response.raise_for_status()
+        upload_response = requests.post(
+            f"{base}/cgi-bin/material/add_material",
+            params={"access_token": access_token},
+            data={"type": "image"},
+            files={"media": ("cover.jpg", image_response.content, image_response.headers.get("Content-Type", "image/jpeg"))},
+            timeout=30,
+        )
+        upload_response.raise_for_status()
+        upload_data = upload_response.json()
+        image_media_id = upload_data.get("media_id")
+        if not image_media_id:
+            raise WeChatPublisherError(upload_data.get("errmsg") or "微信公众号封面上传失败")
+
+        title = str(article.get("title") or "").strip()
+        body = str(article.get("body") or "").strip()
+        item = {
+            "title": title,
+            "author": _setting("WECHAT_AUTHOR") or "NYULIVE",
+            "digest": _digest(body),
+            "content": _html_content(body),
+            "thumb_media_id": image_media_id,
+            "show_cover_pic": 1,
+            "need_open_comment": int(_setting("WECHAT_OPEN_COMMENT") or "0"),
+            "only_fans_can_comment": 0,
+        }
+        source_url = str(article.get("source_url") or "").strip()
+        if source_url.startswith(("https://", "http://")):
+            item["content_source_url"] = source_url
+        draft_response = requests.post(
+            f"{base}/cgi-bin/draft/add",
+            params={"access_token": access_token},
+            json={"articles": [item]},
+            timeout=30,
+        )
+        draft_response.raise_for_status()
+        draft_data = draft_response.json()
+        if not draft_data.get("media_id"):
+            raise WeChatPublisherError(draft_data.get("errmsg") or "微信公众号草稿创建失败")
+        return {"draft_media_id": draft_data["media_id"], "image_media_id": image_media_id}
+    except WeChatPublisherError:
+        raise
+    except requests.RequestException as exc:
+        raise WeChatPublisherError(f"微信公众号接口请求失败：{exc}") from exc
 
 
 def _mcp_tools():
@@ -49,6 +117,11 @@ def create_draft(article: dict, image_url: str) -> dict:
         raise WeChatPublisherError("文章标题和正文不能为空")
     if len(title) > 64:
         raise WeChatPublisherError("标题超过微信公众号草稿限制（64 个字符）")
+
+    # Use the official API by default. The old MCP package depends on a
+    # fixed third-party proxy which is no longer reachable.
+    if _setting("WECHAT_USE_MCP_PROXY").lower() not in {"1", "true", "yes"}:
+        return _official_create_draft(article, image_url)
 
     get_access_token, create_mcp_draft = _mcp_tools()
     token_result = get_access_token({"AppID": _setting("WECHAT_APP_ID"), "AppSecret": _setting("WECHAT_APP_SECRET")})

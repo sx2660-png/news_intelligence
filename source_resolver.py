@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import json
 import os
 import re
 import time
+from html import unescape
+from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -14,10 +17,17 @@ from urllib.request import Request, urlopen
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
 TAVILY_MAX_ATTEMPTS = 3
 DEFAULT_MODEL = "qwen/qwen3.7-plus"
 FALLBACK_MODELS: tuple[str, ...] = ()
 MIN_CONFIDENCE = float(os.environ.get("SOURCE_MIN_CONFIDENCE", "0.75"))
+MAX_EXTRACT_CHARS = 15000
+_HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,zh;q=0.8",
+}
 
 
 def _api_key() -> str:
@@ -97,7 +107,7 @@ def _parse_response(data: dict) -> dict:
         return json.loads(match.group(0))
 
 
-def _tavily_search(query: str, domain_hint: str = "") -> list[dict]:
+def _tavily_search(query: str, domain_hint: str = "", *, include_raw_content: bool = False) -> list[dict]:
     key = _tavily_api_key()
     if not key:
         raise RuntimeError("TAVILY_API_KEY is not set")
@@ -107,7 +117,7 @@ def _tavily_search(query: str, domain_hint: str = "") -> list[dict]:
         "search_depth": "advanced",
         "chunks_per_source": 2,
         "max_results": 5,
-        "include_raw_content": False,
+        "include_raw_content": include_raw_content,
         "include_answer": False,
     }
     domain = _domain(domain_hint)
@@ -144,7 +154,13 @@ def _tavily_search(query: str, domain_hint: str = "") -> list[dict]:
     else:
         raise RuntimeError(f"Tavily search failed: {last_error!r}")
     return [
-        {"url": item.get("url", ""), "title": item.get("title", ""), "content": item.get("content", ""), "score": item.get("score", 0)}
+        {
+            "url": item.get("url", ""),
+            "title": item.get("title", ""),
+            "content": item.get("content", ""),
+            "raw_content": item.get("raw_content") or "",
+            "score": item.get("score", 0),
+        }
         for item in data.get("results", [])
         if item.get("url")
     ]
@@ -172,6 +188,239 @@ def _domain(value: str) -> str:
         return ""
     parsed = urlparse(candidate if "://" in candidate else f"https://{candidate}")
     return parsed.netloc.removeprefix("www.")
+
+
+def _normalize_extracted_text(text: str) -> str:
+    text = unescape(text or "")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()[:MAX_EXTRACT_CHARS]
+
+
+class _HTMLTextExtractor(HTMLParser):
+    _SKIP_TAGS = {"script", "style", "svg", "iframe"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._skip_depth = 0
+        self._in_title = False
+        self._in_ld_json = False
+        self.title = ""
+        self.og_title = ""
+        self.description = ""
+        self.article_body = ""
+        self.parts: list[str] = []
+        self._ld_chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        mapping = {key.lower(): (value or "") for key, value in attrs}
+        if tag == "script":
+            if "ld+json" in mapping.get("type", "").lower():
+                self._in_ld_json = True
+                return
+            self._skip_depth += 1
+            return
+        if tag in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if tag == "title":
+            self._in_title = True
+            return
+        if tag == "meta":
+            prop = (mapping.get("property") or mapping.get("name") or "").lower()
+            content = mapping.get("content", "").strip()
+            if prop in {"og:title", "twitter:title"} and content:
+                self.og_title = content
+            elif prop in {"og:description", "twitter:description", "description"} and content:
+                self.description = self.description or content
+            return
+        if tag in {"p", "div", "br", "li", "h1", "h2", "h3", "tr", "article", "section"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._in_ld_json:
+            self._in_ld_json = False
+            self._ingest_ld_json()
+            self._ld_chunks = []
+            return
+        if tag in self._SKIP_TAGS and self._skip_depth:
+            self._skip_depth -= 1
+            return
+        if tag == "title":
+            self._in_title = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_ld_json:
+            self._ld_chunks.append(data)
+            return
+        text = data.strip()
+        if not text:
+            return
+        if self._in_title:
+            self.title += text
+            return
+        if self._skip_depth:
+            return
+        self.parts.append(text + " ")
+
+    def _ingest_ld_json(self) -> None:
+        try:
+            payload = json.loads("".join(self._ld_chunks))
+        except json.JSONDecodeError:
+            return
+        items = payload if isinstance(payload, list) else [payload]
+        expanded: list[dict] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            graph = item.get("@graph")
+            if isinstance(graph, list):
+                expanded.extend(node for node in graph if isinstance(node, dict))
+            expanded.append(item)
+        for item in expanded:
+            types = item.get("@type") or ""
+            if isinstance(types, list):
+                types = " ".join(str(value) for value in types)
+            types = str(types).lower()
+            if not any(token in types for token in ("article", "news", "blog", "report")):
+                continue
+            self.og_title = self.og_title or str(item.get("headline") or item.get("name") or "")
+            self.article_body = self.article_body or str(item.get("articleBody") or item.get("description") or "")
+
+    def result(self) -> dict:
+        title = (self.og_title or self.title).strip()
+        title = re.sub(r"\s+", " ", unescape(title))
+        text = self.article_body or "".join(self.parts)
+        if self.description and self.description not in text:
+            text = f"{self.description}\n\n{text}".strip()
+        return {"title": title, "text": _normalize_extracted_text(text)}
+
+
+def _tavily_extract(url: str) -> dict:
+    key = _tavily_api_key()
+    if not key:
+        raise RuntimeError("TAVILY_API_KEY is not set")
+    payload = {
+        "urls": [url],
+        "include_images": False,
+        "extract_depth": "advanced",
+        "timeout": 60,
+        "format": "markdown",
+    }
+    req = Request(
+        TAVILY_EXTRACT_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "User-Agent": "news-intelligence/1.0",
+        },
+        method="POST",
+    )
+    last_error: Exception | None = None
+    for attempt in range(TAVILY_MAX_ATTEMPTS):
+        try:
+            with urlopen(req, timeout=90) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            break
+        except HTTPError as exc:
+            if exc.code not in {429, 500, 502, 503, 504} or attempt == TAVILY_MAX_ATTEMPTS - 1:
+                detail = exc.read().decode("utf-8", errors="replace")[:500]
+                raise RuntimeError(f"Tavily extract HTTP {exc.code}: {detail}") from exc
+            last_error = exc
+        except URLError as exc:
+            last_error = exc
+            if attempt == TAVILY_MAX_ATTEMPTS - 1:
+                raise RuntimeError(f"Tavily extract failed after {TAVILY_MAX_ATTEMPTS} attempts: {exc.reason!r}") from exc
+        time.sleep(0.5 * (2 ** attempt))
+    else:
+        raise RuntimeError(f"Tavily extract failed: {last_error!r}")
+    results = data.get("results") or []
+    if not results:
+        failed = data.get("failed_results") or []
+        detail = (failed[0].get("error") if failed else "") or "empty extract"
+        raise RuntimeError(f"Tavily extract failed: {detail}")
+    item = results[0]
+    text = _normalize_extracted_text(str(item.get("raw_content") or ""))
+    if not text:
+        raise RuntimeError("Tavily extract returned empty article text")
+    return {"title": "", "text": text, "url": item.get("url") or url}
+
+
+def _tavily_search_content(url: str) -> dict:
+    results = _tavily_search(url, include_raw_content=True)
+    if not results:
+        raise RuntimeError("Tavily search returned no page content")
+    cleaned = _clean_url(url)
+    host = _domain(url)
+    match = next((item for item in results if _clean_url(item["url"]) == cleaned), None)
+    if not match and host:
+        match = next((item for item in results if _domain(item["url"]) == host), None)
+    match = match or results[0]
+    text = _normalize_extracted_text(str(match.get("raw_content") or match.get("content") or ""))
+    if len(text) < 30:
+        text = _normalize_extracted_text("\n\n".join(
+            str(item.get("raw_content") or item.get("content") or "") for item in results
+        ))
+    if len(text) < 30:
+        raise RuntimeError("Tavily search returned insufficient page content")
+    return {"title": str(match.get("title") or ""), "text": text, "url": match.get("url") or url}
+
+
+def _http_extract(url: str) -> dict:
+    req = Request(url, headers=_HTTP_HEADERS, method="GET")
+    try:
+        with urlopen(req, timeout=30) as response:
+            raw = response.read()
+            content_type = (response.headers.get_content_type() or "").lower()
+            charset = response.headers.get_content_charset() or "utf-8"
+            encoding = (response.headers.get("Content-Encoding") or "").lower()
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:200]
+        raise RuntimeError(f"读取链接失败 HTTP {exc.code}: {detail or exc.reason}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"无法访问该链接: {exc.reason!r}") from exc
+    if encoding == "gzip" or raw[:2] == b"\x1f\x8b":
+        try:
+            raw = gzip.decompress(raw)
+        except OSError:
+            pass
+    html = raw.decode(charset, errors="replace")
+    if content_type and content_type not in {"text/html", "application/xhtml+xml", "text/plain", "application/json"}:
+        text = _normalize_extracted_text(html)
+        if not text:
+            raise RuntimeError(f"该链接返回了无法读取的内容类型: {content_type}")
+        return {"title": "", "text": text, "url": url}
+    parser = _HTMLTextExtractor()
+    parser.feed(html)
+    parsed = parser.result()
+    if len(parsed["text"]) < 30:
+        raise RuntimeError("未能从该链接提取到文章正文")
+    parsed["url"] = url
+    return parsed
+
+
+def extract_url_content(url: str) -> dict:
+    """Fetch readable article text from a pasted URL. Never raises for empty pages."""
+    cleaned = _clean_url(url)
+    if not cleaned.startswith(("http://", "https://")):
+        raise ValueError("来源链接必须以 http:// 或 https:// 开头")
+    errors: list[str] = []
+    for extractor in (_tavily_extract, _http_extract, _tavily_search_content):
+        try:
+            extracted = extractor(cleaned)
+        except Exception as exc:
+            errors.append(f"{extractor.__name__}: {exc}")
+            continue
+        if extracted.get("text") and len(str(extracted["text"]).strip()) >= 30:
+            return extracted
+        errors.append(f"{extractor.__name__}: empty text")
+    return {
+        "title": "",
+        "text": f"来源链接：{cleaned}",
+        "url": cleaned,
+        "extract_errors": errors,
+    }
 
 
 def resolve_source(*, source_type: str, text: str = "", url: str = "", image_bytes: bytes | None = None, mime_type: str = "") -> dict:

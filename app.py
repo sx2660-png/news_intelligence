@@ -229,14 +229,7 @@ def _make_article(email: dict, source: dict | None = None) -> dict:
         "original_body": email["body"],
     }
     if source:
-        article.update({
-            "source_id": source["source_id"],
-            "source_url": source["source_url"],
-            "source_title": source.get("source_title", ""),
-            "source_confidence": source.get("source_confidence", 0),
-            "source_method": source.get("source_method", ""),
-            "source_candidates": source.get("source_candidates", []),
-        })
+        article.update(_source_fields(source))
     return article
 
 
@@ -303,6 +296,30 @@ def _history_id(article: dict) -> str:
     return f"article-{hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()}"
 
 
+def _source_fields(source: dict) -> dict:
+    return {
+        "source_id": source["source_id"],
+        "source_url": source["source_url"],
+        "source_title": source.get("source_title", ""),
+        "source_confidence": source.get("source_confidence", 0),
+        "source_method": source.get("source_method", ""),
+        "source_candidates": source.get("source_candidates", []),
+    }
+
+
+def _source_from_manual_url(url: str, title: str = "") -> dict:
+    normalized = _normalize_source_url(url)
+    source_title = title or "手动添加来源"
+    return {
+        "source_id": _source_id(normalized),
+        "source_url": normalized,
+        "source_title": source_title,
+        "source_confidence": 1.0,
+        "source_method": "manual_source_url",
+        "source_candidates": [{"url": normalized, "title": source_title}],
+    }
+
+
 def _resolve_source_for_record(*, source_type: str, text: str = "", url: str = "", image_bytes: bytes | None = None, mime_type: str = "") -> dict:
     resolved = source_resolver.resolve_source(
         source_type=source_type,
@@ -319,22 +336,31 @@ def _resolve_source_for_record(*, source_type: str, text: str = "", url: str = "
     return resolved
 
 
-def _make_email_article_with_source(email: dict) -> dict:
-    """Generate mail copy even when the web source cannot be verified."""
-    source = None
-    source_lookup = {"found": False, "message": "未找到合适的联网来源，建议手动添加来源。"}
+def _try_resolve_source(*, source_type: str, text: str = "", url: str = "", image_bytes: bytes | None = None, mime_type: str = "") -> tuple[dict | None, dict]:
+    """Best-effort official source lookup. Low confidence never blocks generation."""
+    empty = {"found": False, "message": "未找到合适的联网来源，建议手动添加来源。"}
     try:
         source = _resolve_source_for_record(
-            source_type="email",
-            text=f"{email.get('subject', '')}\n{email.get('body', '')}",
+            source_type=source_type,
+            text=text,
+            url=url,
+            image_bytes=image_bytes,
+            mime_type=mime_type,
         )
-        source_lookup = {"found": True, "message": "已找到一个联网来源。", "url": source["source_url"]}
+        return source, {"found": True, "message": "已找到一个联网来源。", "url": source["source_url"]}
     except ValueError:
-        pass
+        return None, empty
     except Exception:
-        # Source discovery is advisory: an unavailable or low-confidence result
-        # must never prevent email copy and image generation.
-        app.logger.exception("Email source lookup failed; continuing without a source")
+        app.logger.exception("Source lookup failed; continuing without a verified source")
+        return None, empty
+
+
+def _make_email_article_with_source(email: dict) -> dict:
+    """Generate mail copy even when the web source cannot be verified."""
+    source, source_lookup = _try_resolve_source(
+        source_type="email",
+        text=f"{email.get('subject', '')}\n{email.get('body', '')}",
+    )
     article = _make_article(email, source=source)
     article["source_lookup"] = source_lookup
     return article
@@ -608,19 +634,37 @@ def manual_import():
         elif source_type not in {"text", "url"}:
             return jsonify({"error": "不支持的导入类型"}), 400
 
-        if source_type != "url" and len(source_text) < 30:
+        if source_type == "url":
+            if not source_url:
+                return jsonify({"error": "请输入一个来源 URL"}), 400
+            extracted = source_resolver.extract_url_content(source_url)
+            source_text = extracted.get("text") or ""
+            source_title = source_title or extracted.get("title") or ""
+            if extracted.get("extract_errors"):
+                app.logger.warning("URL extract fallbacks: %s", "; ".join(extracted["extract_errors"]))
+        elif len(source_text) < 30:
             return jsonify({"error": "内容太短，请至少提供 30 个字符"}), 400
-        if source_type == "url" and not source_url:
-            return jsonify({"error": "请输入一个来源 URL"}), 400
 
-        source = _resolve_source_for_record(
+        # Generate from the imported article first. Source lookup is advisory
+        # and must not stop copy or image generation.
+        article = _make_manual_article(source_type, source_text, source_title, source_url, resolved=None)
+        source, source_lookup = _try_resolve_source(
             source_type=source_type,
             text=source_text,
             url=source_url,
             image_bytes=image_bytes,
             mime_type=mime_type,
         )
-        article = _make_manual_article(source_type, source_text, source_title, source_url, resolved=source)
+        if not source and source_type == "url":
+            source = _source_from_manual_url(source_url, source_title)
+            source_lookup = {
+                "found": True,
+                "message": "未确认到高置信官方来源，已使用导入的链接。",
+                "url": source["source_url"],
+            }
+        if source:
+            article.update(_source_fields(source))
+        article["source_lookup"] = source_lookup
         _save_single_article(article)
         image = _generate_image_for_current_article()
         article["image"] = image
@@ -721,7 +765,11 @@ def create_wechat_draft():
     try:
         draft = wechat_publisher.create_draft(current, cover_url)
     except wechat_publisher.WeChatPublisherError as exc:
-        return jsonify({"error": str(exc)}), 422
+        # Preserve the provider's actionable error (for example an IP
+        # whitelist or access-token error) instead of hiding it behind a
+        # generic 422 response.
+        app.logger.error("WeChat draft creation rejected: %s", exc)
+        return jsonify({"error": str(exc)}), 502
     except Exception:
         app.logger.exception("Creating WeChat draft failed")
         return jsonify({"error": "同步到微信公众号草稿箱失败，请检查服务日志和微信公众号 IP 白名单"}), 502

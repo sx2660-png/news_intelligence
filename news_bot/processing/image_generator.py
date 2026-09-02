@@ -455,6 +455,13 @@ _URL_RE = re.compile(r"https?://[^\s\)\]\}，。；、]+", re.IGNORECASE)
 def _extract_urls_from_report(r: dict) -> list[str]:
     candidates: list[str] = []
 
+    # A record's normalized source_url is authoritative.  Do not scan the
+    # article body as well, otherwise references mentioned in the copy become
+    # additional "资料来源" entries.
+    explicit_source = r.get("source_url")
+    if isinstance(explicit_source, str) and explicit_source.strip():
+        return [explicit_source.strip().strip("，。,.;:)]}>）】」』")]
+
     if isinstance(r.get("source_urls"), list):
         candidates.extend([u for u in r["source_urls"] if isinstance(u, str)])
     if isinstance(r.get("source_url"), str):

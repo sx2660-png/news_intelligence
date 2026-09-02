@@ -592,7 +592,12 @@
       if(manualKind === "text") form.append("text", $("manualInput").value.trim());
       if(manualKind === "image") form.append("image", manualImageFile);
       setBusy(true);
-      showLoading(manualKind === "image" ? "Reading image, generating copy + image…" : "Generating copy + image…");
+      const loadingLabel = manualKind === "image"
+        ? "Reading image, generating copy + image…"
+        : manualKind === "url"
+          ? "Reading article, generating copy + image…"
+          : "Generating copy + image…";
+      showLoading(loadingLabel);
       log(`Importing manual ${manualKind} source`);
       try{
         const res = await fetch("/api/manual-import", {method:"POST", body:form});
@@ -606,6 +611,13 @@
         if(!res.ok) throw new Error(data.error || res.statusText);
         renderArticle(data.article);
         renderImage(data.image);
+        const sourceLookup = data.article?.source_lookup;
+        if(sourceLookup && !sourceLookup.found){
+          showToast(sourceLookup.message);
+          log(sourceLookup.message);
+        } else if(sourceLookup?.url){
+          log(sourceLookup.message || `Source: ${sourceLookup.url}`);
+        }
         log("Manual source imported; copy and image generated");
         triggerImageDownload();
         log("Image download triggered");
