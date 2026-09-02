@@ -3,12 +3,28 @@
 from __future__ import annotations
 
 import html
+import json
 import mimetypes
 import os
 import re
 from pathlib import Path
 
 import requests
+
+
+def _post_json(url: str, payload: dict, *, timeout: int = 30) -> requests.Response:
+    """POST JSON with real UTF-8 Chinese.
+
+    ``requests``' ``json=`` helper defaults to ``ensure_ascii=True``, which
+    turns 学 into ``\\u5b66``. WeChat draft APIs often store those escapes
+    literally in the title/body preview.
+    """
+    return requests.post(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        timeout=timeout,
+    )
 
 
 class WeChatPublisherError(RuntimeError):
@@ -23,39 +39,105 @@ def is_configured() -> bool:
     return bool(_setting("WECHAT_APP_ID") and _setting("WECHAT_APP_SECRET"))
 
 
-def _html_content(text: str) -> str:
-    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text.strip()) if part.strip()]
-    return "".join(f"<p>{html.escape(paragraph).replace(chr(10), '<br>')}</p>" for paragraph in paragraphs)
-
-
 def _digest(text: str) -> str:
     return re.sub(r"\s+", "", text)[:54]
 
 
-def _load_cover_bytes(image_path: str | None = None, image_url: str | None = None) -> tuple[bytes, str, str]:
-    """Return (bytes, filename, content_type) from a local file, or fall back to URL."""
+def _blank_cover_bytes() -> tuple[bytes, str, str]:
+    """WeChat news drafts require thumb_media_id; use a plain white placeholder."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    # Recommended cover aspect is wide; keep it plain so it reads as "no cover".
+    image = Image.new("RGB", (900, 383), color=(255, 255, 255))
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue(), "blank_cover.jpg", "image/jpeg"
+
+
+def _read_image(path: str) -> tuple[bytes, str, str]:
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise WeChatPublisherError(f"图片不存在：{file_path.name}")
+    content_type = mimetypes.guess_type(file_path.name)[0] or "image/png"
+    return file_path.read_bytes(), file_path.name, content_type
+
+
+def _upload_material(
+    base: str,
+    access_token: str,
+    *,
+    image_bytes: bytes,
+    image_name: str,
+    content_type: str,
+) -> str:
+    """Upload permanent image material and return media_id."""
+    response = requests.post(
+        f"{base}/cgi-bin/material/add_material",
+        params={"access_token": access_token, "type": "image"},
+        files={"media": (image_name, image_bytes, content_type)},
+        timeout=60,
+    )
+    response.raise_for_status()
+    data = response.json()
+    media_id = data.get("media_id")
+    if not media_id:
+        raise WeChatPublisherError(data.get("errmsg") or "微信公众号封面上传失败")
+    return media_id
+
+
+def _upload_thumb(base: str, access_token: str, image_path: str | None = None) -> str:
+    """Upload cover material. Prefer blank placeholder when no cover is provided."""
     if image_path:
-        path = Path(image_path)
-        if not path.is_file():
-            raise WeChatPublisherError("本地封面图不存在，请先重新生成封面")
-        content_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
-        return path.read_bytes(), path.name or "cover.jpg", content_type
+        image_bytes, image_name, content_type = _read_image(image_path)
+    else:
+        image_bytes, image_name, content_type = _blank_cover_bytes()
+    return _upload_material(
+        base,
+        access_token,
+        image_bytes=image_bytes,
+        image_name=image_name,
+        content_type=content_type,
+    )
 
-    if image_url and image_url.startswith(("https://", "http://")):
-        image_response = requests.get(image_url, timeout=30)
-        image_response.raise_for_status()
-        content_type = image_response.headers.get("Content-Type", "image/jpeg")
-        return image_response.content, "cover.jpg", content_type
 
-    raise WeChatPublisherError("缺少封面图文件")
+def _upload_content_image(base: str, access_token: str, image_path: str) -> str:
+    """Upload an article-body image and return the WeChat CDN URL."""
+    image_bytes, image_name, content_type = _read_image(image_path)
+    response = requests.post(
+        f"{base}/cgi-bin/media/uploadimg",
+        params={"access_token": access_token},
+        files={"media": (image_name, image_bytes, content_type)},
+        timeout=60,
+    )
+    response.raise_for_status()
+    data = response.json()
+    url = data.get("url")
+    if not url:
+        raise WeChatPublisherError(data.get("errmsg") or f"正文图片上传失败：{Path(image_path).name}")
+    return url
+
+
+def _image_content_html(image_urls: list[str]) -> str:
+    parts = []
+    for url in image_urls:
+        safe_url = html.escape(url, quote=True)
+        parts.append(
+            f'<p style="margin:0;padding:0;text-align:center;">'
+            f'<img src="{safe_url}" style="max-width:100%;height:auto;display:block;margin:0 auto;" />'
+            f"</p>"
+        )
+    return "".join(parts)
 
 
 def _official_create_draft(
     article: dict,
-    image_path: str | None = None,
-    image_url: str | None = None,
+    *,
+    article_image_path: str,
+    source_image_path: str | None = None,
 ) -> dict:
-    """Create a draft through WeChat's official API, without the old MCP proxy."""
+    """Create a draft: generated title + article/source images as body content."""
     base = _setting("WECHAT_API_BASE_URL") or "https://api.weixin.qq.com"
     try:
         token_response = requests.get(
@@ -73,48 +155,43 @@ def _official_create_draft(
         if not access_token:
             raise WeChatPublisherError(token_data.get("errmsg") or "未能取得微信公众号访问凭证")
 
-        # Prefer a local file. Fetching our own Railway public URL from the
-        # same gunicorn worker deadlocks and times out.
-        image_bytes, image_name, content_type = _load_cover_bytes(image_path=image_path, image_url=image_url)
-        upload_response = requests.post(
-            f"{base}/cgi-bin/material/add_material",
-            params={"access_token": access_token},
-            data={"type": "image"},
-            files={"media": (image_name, image_bytes, content_type)},
-            timeout=60,
-        )
-        upload_response.raise_for_status()
-        upload_data = upload_response.json()
-        image_media_id = upload_data.get("media_id")
-        if not image_media_id:
-            raise WeChatPublisherError(upload_data.get("errmsg") or "微信公众号封面上传失败")
+        # Title stays the generated Chinese title. Body is only the two images.
+        # WeChat still requires thumb_media_id for news drafts, so upload a blank
+        # placeholder and hide it in the article body.
+        thumb_media_id = _upload_thumb(base, access_token, image_path=None)
+        content_paths = [article_image_path]
+        if source_image_path:
+            content_paths.append(source_image_path)
+        content_urls = [_upload_content_image(base, access_token, path) for path in content_paths]
 
         title = str(article.get("title") or "").strip()
-        body = str(article.get("body") or "").strip()
         item = {
             "title": title,
             "author": _setting("WECHAT_AUTHOR") or "NYULIVE",
-            "digest": _digest(body),
-            "content": _html_content(body),
-            "thumb_media_id": image_media_id,
-            "show_cover_pic": 1,
+            "digest": _digest(title),
+            "content": _image_content_html(content_urls),
+            "thumb_media_id": thumb_media_id,
+            "show_cover_pic": 0,
             "need_open_comment": int(_setting("WECHAT_OPEN_COMMENT") or "0"),
             "only_fans_can_comment": 0,
         }
         source_url = str(article.get("source_url") or "").strip()
         if source_url.startswith(("https://", "http://")):
             item["content_source_url"] = source_url
-        draft_response = requests.post(
-            f"{base}/cgi-bin/draft/add",
-            params={"access_token": access_token},
-            json={"articles": [item]},
+        draft_response = _post_json(
+            f"{base}/cgi-bin/draft/add?access_token={access_token}",
+            {"articles": [item]},
             timeout=30,
         )
         draft_response.raise_for_status()
         draft_data = draft_response.json()
         if not draft_data.get("media_id"):
             raise WeChatPublisherError(draft_data.get("errmsg") or "微信公众号草稿创建失败")
-        return {"draft_media_id": draft_data["media_id"], "image_media_id": image_media_id}
+        return {
+            "draft_media_id": draft_data["media_id"],
+            "image_media_id": thumb_media_id,
+            "content_image_urls": content_urls,
+        }
     except WeChatPublisherError:
         raise
     except requests.RequestException as exc:
@@ -131,6 +208,9 @@ def _mcp_tools():
 
 def create_draft(
     article: dict,
+    *,
+    article_image_path: str | None = None,
+    source_image_path: str | None = None,
     image_url: str | None = None,
     image_path: str | None = None,
 ) -> dict:
@@ -139,19 +219,30 @@ def create_draft(
         raise WeChatPublisherError("尚未配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET")
 
     title = str(article.get("title") or "").strip()
-    body = str(article.get("body") or "").strip()
-    if not title or not body:
-        raise WeChatPublisherError("文章标题和正文不能为空")
+    if not title:
+        raise WeChatPublisherError("文章标题不能为空")
     if len(title) > 64:
         raise WeChatPublisherError("标题超过微信公众号草稿限制（64 个字符）")
+
+    resolved_article_image = article_image_path or image_path
+    if not resolved_article_image:
+        raise WeChatPublisherError("请先生成正文图片")
 
     # Use the official API by default. The old MCP package depends on a
     # fixed third-party proxy which is no longer reachable.
     if _setting("WECHAT_USE_MCP_PROXY").lower() not in {"1", "true", "yes"}:
-        return _official_create_draft(article, image_path=image_path, image_url=image_url)
+        return _official_create_draft(
+            article,
+            article_image_path=resolved_article_image,
+            source_image_path=source_image_path,
+        )
 
     if not image_url or not image_url.startswith(("https://", "http://")):
         raise WeChatPublisherError("MCP 模式需要可供外部读取的封面 URL，请配置 APP_URL 和 WECHAT_COVER_TOKEN")
+
+    body = str(article.get("body") or "").strip()
+    if not body:
+        raise WeChatPublisherError("MCP 模式仍需要文章正文")
 
     get_access_token, create_mcp_draft = _mcp_tools()
     token_result = get_access_token({"AppID": _setting("WECHAT_APP_ID"), "AppSecret": _setting("WECHAT_APP_SECRET")})
@@ -162,9 +253,9 @@ def create_draft(
         "access_token": token_result["access_token"],
         "image_url": image_url,
         "title": title,
-        "content": _html_content(body),
+        "content": _image_content_html([image_url]),
         "author": _setting("WECHAT_AUTHOR") or "NYULIVE",
-        "digest": _digest(body),
+        "digest": _digest(title),
         "need_open_comment": int(_setting("WECHAT_OPEN_COMMENT") or "0"),
     }
     source_url = str(article.get("source_url") or "").strip()

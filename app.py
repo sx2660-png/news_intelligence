@@ -757,12 +757,26 @@ def create_wechat_draft():
     if not current:
         return jsonify({"error": "No article exists yet"}), 404
 
-    image_path = str((current.get("image") or {}).get("image_path") or "")
-    resolved_image = Path(image_path).resolve()
-    if not image_path or not resolved_image.exists() or OUTPUT_DIR not in resolved_image.parents:
-        return jsonify({"error": "请先生成公众号封面图"}), 422
+    image_info = current.get("image") or {}
+    image_path = str(image_info.get("image_path") or "")
+    source_image_path = str(image_info.get("source_image_path") or "")
+    resolved_image = Path(image_path).resolve() if image_path else None
+    resolved_source = Path(source_image_path).resolve() if source_image_path else None
 
-    # Official API uploads the local cover file directly. Only the legacy MCP
+    if (
+        not resolved_image
+        or not resolved_image.exists()
+        or OUTPUT_DIR not in resolved_image.parents
+    ):
+        return jsonify({"error": "请先生成正文图片"}), 422
+    if (
+        not resolved_source
+        or not resolved_source.exists()
+        or OUTPUT_DIR not in resolved_source.parents
+    ):
+        return jsonify({"error": "请先生成来源图片后再同步到微信草稿"}), 422
+
+    # Official API uploads local images directly. Only the legacy MCP
     # proxy needs a public APP_URL that an external service can fetch.
     use_mcp = os.environ.get("WECHAT_USE_MCP_PROXY", "").strip().lower() in {"1", "true", "yes"}
     cover_url = None
@@ -776,6 +790,8 @@ def create_wechat_draft():
     try:
         draft = wechat_publisher.create_draft(
             current,
+            article_image_path=str(resolved_image),
+            source_image_path=str(resolved_source),
             image_url=cover_url,
             image_path=str(resolved_image),
         )
