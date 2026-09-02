@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+if [ -n "${DATA_DIR:-}" ]; then
+  mkdir -p "$DATA_DIR"
+  echo "[data] Using persistent DATA_DIR=$DATA_DIR"
+fi
+
 FONT_SRC="news_bot/assets/fonts/SourceHanSerifSC-VF.otf"
 USER_FONT_DIR="$HOME/.local/share/fonts"
 SYSTEM_FONT_DIR="/usr/local/share/fonts/source-han-serif"

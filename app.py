@@ -24,11 +24,16 @@ import wechat_publisher
 
 
 BASE_DIR = Path(__file__).parent.resolve()
-EMAILS_FILE = BASE_DIR / gmail_scraper.OUTPUT_FILE
-ARTICLES_FILE = BASE_DIR / content_generator.OUTPUT_FILE
-OUTPUT_DIR = BASE_DIR / output_to_images.OUTPUT_DIR
-FETCH_STATE_FILE = BASE_DIR / "fetch_state.json"
-HISTORY_FILE = BASE_DIR / "history.json"
+# Railway containers are ephemeral. Set DATA_DIR to a mounted volume
+# (for example /data) so history, fetch state, and generated images survive redeploys.
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR))).expanduser().resolve()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+EMAILS_FILE = DATA_DIR / gmail_scraper.OUTPUT_FILE
+ARTICLES_FILE = DATA_DIR / content_generator.OUTPUT_FILE
+OUTPUT_DIR = DATA_DIR / output_to_images.OUTPUT_DIR
+FETCH_STATE_FILE = DATA_DIR / "fetch_state.json"
+HISTORY_FILE = DATA_DIR / "history.json"
 
 # Fallback window (days) used the very first time we fetch, before any
 # last-fetch timestamp has been recorded.
@@ -69,6 +74,7 @@ def _read_json(path: Path, default):
 
 
 def _write_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
