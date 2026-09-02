@@ -1,10 +1,12 @@
-"""NYULIVE draft publishing through the ``wechat_oa_mcp`` package."""
+"""NYULIVE draft publishing through the official WeChat API or ``wechat_oa_mcp``."""
 
 from __future__ import annotations
 
 import html
+import mimetypes
 import os
 import re
+from pathlib import Path
 
 import requests
 
@@ -30,7 +32,29 @@ def _digest(text: str) -> str:
     return re.sub(r"\s+", "", text)[:54]
 
 
-def _official_create_draft(article: dict, image_url: str) -> dict:
+def _load_cover_bytes(image_path: str | None = None, image_url: str | None = None) -> tuple[bytes, str, str]:
+    """Return (bytes, filename, content_type) from a local file, or fall back to URL."""
+    if image_path:
+        path = Path(image_path)
+        if not path.is_file():
+            raise WeChatPublisherError("本地封面图不存在，请先重新生成封面")
+        content_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+        return path.read_bytes(), path.name or "cover.jpg", content_type
+
+    if image_url and image_url.startswith(("https://", "http://")):
+        image_response = requests.get(image_url, timeout=30)
+        image_response.raise_for_status()
+        content_type = image_response.headers.get("Content-Type", "image/jpeg")
+        return image_response.content, "cover.jpg", content_type
+
+    raise WeChatPublisherError("缺少封面图文件")
+
+
+def _official_create_draft(
+    article: dict,
+    image_path: str | None = None,
+    image_url: str | None = None,
+) -> dict:
     """Create a draft through WeChat's official API, without the old MCP proxy."""
     base = _setting("WECHAT_API_BASE_URL") or "https://api.weixin.qq.com"
     try:
@@ -49,14 +73,15 @@ def _official_create_draft(article: dict, image_url: str) -> dict:
         if not access_token:
             raise WeChatPublisherError(token_data.get("errmsg") or "未能取得微信公众号访问凭证")
 
-        image_response = requests.get(image_url, timeout=30)
-        image_response.raise_for_status()
+        # Prefer a local file. Fetching our own Railway public URL from the
+        # same gunicorn worker deadlocks and times out.
+        image_bytes, image_name, content_type = _load_cover_bytes(image_path=image_path, image_url=image_url)
         upload_response = requests.post(
             f"{base}/cgi-bin/material/add_material",
             params={"access_token": access_token},
             data={"type": "image"},
-            files={"media": ("cover.jpg", image_response.content, image_response.headers.get("Content-Type", "image/jpeg"))},
-            timeout=30,
+            files={"media": (image_name, image_bytes, content_type)},
+            timeout=60,
         )
         upload_response.raise_for_status()
         upload_data = upload_response.json()
@@ -104,12 +129,14 @@ def _mcp_tools():
     return WeChat_get_access_token, WeChat_create_draft
 
 
-def create_draft(article: dict, image_url: str) -> dict:
-    """Create a draft through the selected MCP package; never publishes it."""
+def create_draft(
+    article: dict,
+    image_url: str | None = None,
+    image_path: str | None = None,
+) -> dict:
+    """Create a draft through the official API (default) or MCP proxy; never publishes it."""
     if not is_configured():
         raise WeChatPublisherError("尚未配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET")
-    if not image_url.startswith(("https://", "http://")):
-        raise WeChatPublisherError("缺少可供公众号读取的封面 URL")
 
     title = str(article.get("title") or "").strip()
     body = str(article.get("body") or "").strip()
@@ -121,7 +148,10 @@ def create_draft(article: dict, image_url: str) -> dict:
     # Use the official API by default. The old MCP package depends on a
     # fixed third-party proxy which is no longer reachable.
     if _setting("WECHAT_USE_MCP_PROXY").lower() not in {"1", "true", "yes"}:
-        return _official_create_draft(article, image_url)
+        return _official_create_draft(article, image_path=image_path, image_url=image_url)
+
+    if not image_url or not image_url.startswith(("https://", "http://")):
+        raise WeChatPublisherError("MCP 模式需要可供外部读取的封面 URL，请配置 APP_URL 和 WECHAT_COVER_TOKEN")
 
     get_access_token, create_mcp_draft = _mcp_tools()
     token_result = get_access_token({"AppID": _setting("WECHAT_APP_ID"), "AppSecret": _setting("WECHAT_APP_SECRET")})

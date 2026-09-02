@@ -762,14 +762,23 @@ def create_wechat_draft():
     if not image_path or not resolved_image.exists() or OUTPUT_DIR not in resolved_image.parents:
         return jsonify({"error": "请先生成公众号封面图"}), 422
 
-    app_url = os.environ.get("APP_URL", "").strip().rstrip("/")
-    cover_token = os.environ.get("WECHAT_COVER_TOKEN", "").strip()
-    if not app_url or not cover_token:
-        return jsonify({"error": "请配置 APP_URL 和 WECHAT_COVER_TOKEN，供 MCP 服务读取封面图"}), 422
-    cover_url = f"{app_url}{url_for('wechat_cover', token=cover_token)}"
+    # Official API uploads the local cover file directly. Only the legacy MCP
+    # proxy needs a public APP_URL that an external service can fetch.
+    use_mcp = os.environ.get("WECHAT_USE_MCP_PROXY", "").strip().lower() in {"1", "true", "yes"}
+    cover_url = None
+    if use_mcp:
+        app_url = os.environ.get("APP_URL", "").strip().rstrip("/")
+        cover_token = os.environ.get("WECHAT_COVER_TOKEN", "").strip()
+        if not app_url or not cover_token:
+            return jsonify({"error": "MCP 模式请配置 APP_URL 和 WECHAT_COVER_TOKEN"}), 422
+        cover_url = f"{app_url}{url_for('wechat_cover', token=cover_token)}"
 
     try:
-        draft = wechat_publisher.create_draft(current, cover_url)
+        draft = wechat_publisher.create_draft(
+            current,
+            image_url=cover_url,
+            image_path=str(resolved_image),
+        )
     except wechat_publisher.WeChatPublisherError as exc:
         # Preserve the provider's actionable error (for example an IP
         # whitelist or access-token error) instead of hiding it behind a
