@@ -111,8 +111,66 @@ def is_relevant(email: dict) -> bool:
 
 # ── WeChat article generator ───────────────────────────────────────────
 
-SYSTEM_PROMPT = """你是「情报特刊」公众号的资深编辑，专注报道与纽约大学（NYU）及纽约相关的新闻资讯。
-读者群体：在纽约或关注纽约的中文读者。
+# Per-school context for the editorial prompt. Keys are the uppercase codes
+# produced by detect_school() (kept in sync with output_to_images.detect_school).
+# The framework below is school-agnostic; only school_full / city / example
+# fields are swapped so the same editorial rules apply to every campus.
+SCHOOL_PROFILES = {
+    "NYU": {
+        "school_full": "纽约大学（NYU）", "city": "纽约",
+        "school_en": "NYU", "school_cn": "纽约大学",
+    },
+    "USC": {
+        "school_full": "南加州大学（USC）", "city": "洛杉矶",
+        "school_en": "USC", "school_cn": "南加州大学",
+    },
+    "EMORY": {
+        "school_full": "埃默里大学（Emory）", "city": "亚特兰大",
+        "school_en": "Emory", "school_cn": "埃默里大学",
+    },
+    "EDINBURGH": {
+        "school_full": "爱丁堡大学（University of Edinburgh）", "city": "爱丁堡",
+        "school_en": "Edinburgh", "school_cn": "爱丁堡大学",
+    },
+    "UCD": {
+        "school_full": "加州大学戴维斯分校（UC Davis）", "city": "戴维斯",
+        "school_en": "UC Davis", "school_cn": "加州大学戴维斯分校",
+    },
+    "UBC": {
+        "school_full": "英属哥伦比亚大学（UBC）", "city": "温哥华",
+        "school_en": "UBC", "school_cn": "英属哥伦比亚大学",
+    },
+}
+DEFAULT_SCHOOL = "NYU"
+
+
+def detect_school(email: dict) -> str:
+    """Infer the school for one email from its sender / subject.
+
+    Mirrors output_to_images.detect_school so copy and images agree on the
+    school. Falls back to DEFAULT_SCHOOL when no signal is found.
+    """
+    combined = (str(email.get("sender") or "") + " " + str(email.get("subject") or "")).lower()
+    if "nyu" in combined:
+        return "NYU"
+    if "usc" in combined or "annenberg" in combined:
+        return "USC"
+    if "emory" in combined:
+        return "EMORY"
+    if "ucdavis" in combined or "theaggie" in combined:
+        return "UCD"
+    if "ubc" in combined or "ubyssey" in combined:
+        return "UBC"
+    if "edinburgh" in combined or "ed.ac.uk" in combined:
+        return "EDINBURGH"
+    return DEFAULT_SCHOOL
+
+
+# Universal editorial framework. School-specific bits are placeholders filled by
+# build_system_prompt(); every "写什么 / 不写什么" rule below is school-agnostic
+# and must stay intact for all campuses.
+SYSTEM_PROMPT_TEMPLATE = """你是「情报特刊」公众号的资深编辑，专注报道与{school_full}及{city}相关的新闻资讯。
+读者群体：在{city}或关注{city}的中文读者。
 
 写作风格要求（参照范例）：
 - 以一个简洁有力的粗体标题开头（格式：**标题**），标题准确概括核心事件
@@ -121,10 +179,20 @@ SYSTEM_PROMPT = """你是「情报特刊」公众号的资深编辑，专注报�
 - 时间、地点、人物、事件经过、影响、后续进展——按重要性依次呈现
 - 人名必须以原文写法逐字保留：不要翻译、音译、缩写、中文化、改写姓名称谓，也不要根据常识补全名字。首次出现时直接使用原文姓名；后续如原文只写姓氏或名字，也维持原文对应的写法。
 - 保留真正的专有名词：机构名、项目名、专有事件名和人名可保留英文；职位、身份、通用名词必须翻译为简体中文
-- 例如：“Tokyo Governor”应写为“东京都知事”，“NYU President”应写为“纽约大学校长”，不要把职位原样留在中文标题或正文中
+- 例如：“Tokyo Governor”应写为“东京都知事”，“{school_en} President”应写为“{school_cn}校长”，不要把职位原样留在中文标题或正文中
 - 全文 250-400 字，适合手机阅读
 - 严格只基于原文事实，不编造、不推测
 - 绝对不要出现任何联系方式、求助/客服指引或热线相关内容：包括邮箱地址、电话号码、网址、"请发送邮件至…""请联系…""校方建议联系…""请登录…核实/更新手机号码""如有疑问请致电…"等。即使原文包含这些信息，也一律删除，不要改写保留。正文只报道新闻事实本身，以事实陈述自然收尾"""
+
+
+def build_system_prompt(school: str | None) -> str:
+    """Fill the universal framework with one school's context."""
+    profile = SCHOOL_PROFILES.get((school or "").upper().strip(), SCHOOL_PROFILES[DEFAULT_SCHOOL])
+    return SYSTEM_PROMPT_TEMPLATE.format(**profile)
+
+
+# Backward-compatible default (used if anything still imports SYSTEM_PROMPT).
+SYSTEM_PROMPT = build_system_prompt(DEFAULT_SCHOOL)
 
 USER_PROMPT_TEMPLATE = """请根据以下邮件内容，改写成一篇情报特刊风格的中文新闻报道。
 
@@ -231,8 +299,10 @@ def generate_article(client: OpenAI, email: dict) -> tuple[str, str]:
     """
     body_excerpt = str(email.get("body") or "")[:8000]
     fallback_title = str(email.get("subject") or "").strip() or "新闻速览"
+    school = detect_school(email)
+    log.info("Article school detected: %s", school)
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": build_system_prompt(school)},
         {
             "role": "user",
             "content": USER_PROMPT_TEMPLATE.format(
