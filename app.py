@@ -420,6 +420,7 @@ def _generate_image_for_current_article(school: str | None = None) -> dict:
         "output_dir": result.get("output_dir", ""),
         "image_path": _latest_image_path(result),
         "source_image_path": result.get("source_image_path", ""),
+        "school": result.get("school", ""),
         "total": result.get("total", 0),
     }
 
@@ -794,6 +795,7 @@ def create_wechat_draft():
             source_image_path=str(resolved_source),
             image_url=cover_url,
             image_path=str(resolved_image),
+            school=str(image_info.get("school") or ""),
         )
     except wechat_publisher.WeChatPublisherError as exc:
         # Preserve the provider's actionable error (for example an IP

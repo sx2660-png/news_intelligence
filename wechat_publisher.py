@@ -31,6 +31,28 @@ class WeChatPublisherError(RuntimeError):
     """A user-safe explanation of a WeChat/MCP failure."""
 
 
+# Per-school cover ("封面") images live in assets/BREAKING_img/. Keys match the
+# uppercase school codes produced by output_to_images.detect_school().
+_COVER_DIR = Path(__file__).resolve().parent / "assets" / "BREAKING_img"
+_COVER_FILES = {
+    "NYU": "NYU_BREAKING.jpg",
+    "USC": "USC_BREAKING.jpg",
+    "EMORY": "Emory_BREAKING.jpg",
+    "EDINBURGH": "EDIN_BREAKING.jpg",
+}
+
+
+def _resolve_cover_path(school: str | None) -> str | None:
+    """Return the branded cover image for a school, or None to fall back to blank."""
+    if not school:
+        return None
+    filename = _COVER_FILES.get(school.upper().strip())
+    if not filename:
+        return None
+    candidate = _COVER_DIR / filename
+    return str(candidate) if candidate.is_file() else None
+
+
 def _setting(name: str) -> str:
     return os.environ.get(name, "").strip()
 
@@ -136,6 +158,7 @@ def _official_create_draft(
     *,
     article_image_path: str,
     source_image_path: str | None = None,
+    cover_image_path: str | None = None,
 ) -> dict:
     """Create a draft: generated title + article/source images as body content."""
     base = _setting("WECHAT_API_BASE_URL") or "https://api.weixin.qq.com"
@@ -156,9 +179,11 @@ def _official_create_draft(
             raise WeChatPublisherError(token_data.get("errmsg") or "未能取得微信公众号访问凭证")
 
         # Title stays the generated Chinese title. Body is only the two images.
-        # WeChat still requires thumb_media_id for news drafts, so upload a blank
-        # placeholder and hide it in the article body.
-        thumb_media_id = _upload_thumb(base, access_token, image_path=None)
+        # WeChat requires thumb_media_id for news drafts; use the school's branded
+        # BREAKING cover when available, otherwise fall back to a blank placeholder.
+        # The cover only serves as the feed thumbnail (show_cover_pic=0 keeps the
+        # body to just the two generated images).
+        thumb_media_id = _upload_thumb(base, access_token, image_path=cover_image_path)
         content_paths = [article_image_path]
         if source_image_path:
             content_paths.append(source_image_path)
@@ -213,6 +238,7 @@ def create_draft(
     source_image_path: str | None = None,
     image_url: str | None = None,
     image_path: str | None = None,
+    school: str | None = None,
 ) -> dict:
     """Create a draft through the official API (default) or MCP proxy; never publishes it."""
     if not is_configured():
@@ -235,6 +261,7 @@ def create_draft(
             article,
             article_image_path=resolved_article_image,
             source_image_path=source_image_path,
+            cover_image_path=_resolve_cover_path(school),
         )
 
     if not image_url or not image_url.startswith(("https://", "http://")):
