@@ -7,4 +7,4 @@ __pycache__
 wechat_images
 emails_output.json
 articles_output.json
-assets
+assets/fonts
